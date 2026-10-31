@@ -1,8 +1,7 @@
-"""MCP client records, enums and the JSON shapes the client stores.
+"""The OAuth shapes are the RFC JSON documents themselves, as ``TypedDict``s.
 
-The OAuth shapes are the RFC JSON documents themselves (``TypedDict``s),
-because they're stored verbatim and a row written by a TypeScript agent must
-survive a Python rewrite.
+They're stored verbatim, and a row written by a TypeScript agent must survive
+a Python rewrite.
 """
 
 from dataclasses import dataclass, field
@@ -66,18 +65,6 @@ class AddMcpServerResult:
 
 @dataclass(slots=True, kw_only=True)
 class SessionSnapshot:
-    """What restoring a negotiated session needs without a new handshake.
-
-    Parameters
-    ----------
-    protocol_version
-        The negotiated protocol version.
-    session_id
-        The ``Mcp-Session-Id`` the server assigned, if it did.
-    discover_result
-        The ``server/discover`` result (2026-07-28 servers only).
-    """
-
     protocol_version: str
     session_id: str | None = None
     discover_result: dict[str, Any] | None = None
@@ -151,9 +138,9 @@ class MCPServerRecord:
         )
 
 
+# Upstream's connection retries (client/index.ts:1140). MCPServerRecord.retry
+# repeats these delays in milliseconds as its stored defaults.
 DEFAULT_CONNECT_RETRY = RetryOptions(max_attempts=3, base_delay=0.5, max_delay=5)
-"""Upstream's connection retries (``client/index.ts:1140``); the stored
-defaults below are the same values in milliseconds."""
 
 
 @dataclass(slots=True, kw_only=True)

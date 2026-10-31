@@ -1,5 +1,3 @@
-"""Errors raised by the Streams capability."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("StreamClosedError", "StreamNotFoundError", "StreamSerializationError")

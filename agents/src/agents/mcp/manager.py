@@ -1,8 +1,6 @@
-"""The MCP client capability: every server an object is connected to.
+"""Port of upstream ``client/index.ts``.
 
-Port of upstream ``client/index.ts`` (``MCPClientManager``): registering,
-restoring and removing servers, the aggregated catalog, calls, and the
-OAuth callback route (``.design/mcp_engine.md`` §6, §7.3).
+See ``.design/mcp_engine.md`` §6 and §7.3.
 """
 
 import asyncio
@@ -73,7 +71,7 @@ type _StateFilter = MCPConnectionState | Sequence[MCPConnectionState] | None
 
 
 class _ConnectFailedError(Exception):
-    """An attempt ended ``FAILED``; retried by `run_with_retries`."""
+    pass
 
 
 class MCPClientManager(LifecycleCapability):

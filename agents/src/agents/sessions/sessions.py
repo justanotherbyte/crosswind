@@ -1,12 +1,11 @@
-"""Durable conversation history: the Sessions capability.
+"""Port of the phase-1 API of upstream ``sessions/``.
 
-Port of the phase-1 API of upstream ``sessions/`` (``sessions.ts``,
-``handle.ts``, ``core.ts``, ``mirror.ts``; ``.design/sessions_api.md``,
-``.design/sessions_engine.md``). A session is a chain of messages in wire
-form; one too large for a row is split across continuation rows. Reads walk
-the path first without content, then fetch it in bounded windows. Every
-write is followed by the change feed, which hosts mirror into memory. It
-needs no alarm, so it works on facets as is.
+Ports ``sessions.ts``, ``handle.ts``, ``core.ts`` and ``mirror.ts``
+(``.design/sessions_api.md``, ``.design/sessions_engine.md``). A session is a
+chain of messages in wire form; one too large for a row is split across
+continuation rows. Reads walk the path first without content, then fetch it in
+bounded windows. Every write is followed by the change feed, which hosts mirror
+into memory. It needs no alarm, so it works on facets as is.
 """
 
 import hashlib
@@ -449,15 +448,12 @@ class Session:
 
         return self._sessions.subscribe(apply)
 
+    # Synchronous so chat can call it inside a Streams cutover's commit: the
+    # message lands in the same transaction that settles the stream. If that
+    # transaction rolls back, call _abandon.
     def _upsert_sync(
         self, message: SessionMessage, *, source: Source = "server"
     ) -> tuple[AppendResult, Callable[[], Awaitable[None]]]:
-        """Upsert now, synchronously; await the returned ``after`` for the feed.
-
-        Chat calls it inside a Streams cutover's ``commit``, so the message
-        lands in the same transaction that settles the stream. If that
-        transaction rolls back, call `_abandon`.
-        """
         sessions = self._sessions
         if not sessions._store.exists(self.session_id, message["id"]):
             return self._append_now(message, source)
@@ -470,8 +466,8 @@ class Session:
             self._notify, UpdateEvent(session_id=self.session_id, message=prepared)
         )
 
+    # A rolled-back transaction may have counted its writes in the cached tail.
     def _abandon(self) -> None:
-        """Forget cached state after a rolled-back transaction counted writes."""
         self._sessions._tails.pop(self.session_id, None)
 
     def _append_now(

@@ -1,12 +1,11 @@
-"""Durable incremental output: the Streams capability.
+"""Port of upstream ``streams/streams.ts``.
 
-Port of upstream ``streams/streams.ts`` (``.design/streams_api.md``,
-``.design/streams_engine.md``). Each stream is an ordered, durable chunk log
-with a monotonic cursor, replay-then-tail reads, and a terminal state. It
-needs no alarm, so it works on facets as is. Live fanout is in-isolate: a
-Durable Object runs in one isolate at a time, so every concurrent reader
-shares the producer's; a reader that outlives the isolate replays from its
-cursor when it comes back.
+See ``.design/streams_api.md`` and ``.design/streams_engine.md``. Each stream
+is an ordered, durable chunk log with a monotonic cursor, replay-then-tail
+reads, and a terminal state. It needs no alarm, so it works on facets as is.
+Live fanout is in-isolate: a Durable Object runs in one isolate at a time, so
+every concurrent reader shares the producer's; a reader that outlives the
+isolate replays from its cursor when it comes back.
 """
 
 import asyncio
@@ -36,7 +35,6 @@ _DEFAULT_BATCH_SIZE = 100
 _DEFAULT_LIST_LIMIT = 100
 
 type DeleteHook = Callable[[StreamRow, int], None]
-"""Sees a stream's row and cursor just before its rows are deleted."""
 
 
 class StreamWriter:
@@ -365,11 +363,8 @@ class Streams(LifecycleCapability):
     def _cursor(self, stream_id: str) -> int:
         return self._store.tail(stream_id).next_seq
 
+    # Hooks must be synchronous: a cutover's hooks run inside its transaction.
     def _on_delete(self, hook: DeleteHook) -> Disposable:
-        """Observe every deletion of a stream's rows (synchronous hooks only).
-
-        A cutover's hooks run inside its transaction.
-        """
         self._delete_hooks.append(hook)
         return Disposable(lambda: self._delete_hooks.remove(hook))
 
@@ -382,12 +377,6 @@ class Streams(LifecycleCapability):
         commit: Callable[[], None] | None = None,
         discard: bool = False,
     ) -> bool:
-        """Settle a live stream; return whether this call ended it.
-
-        With ``commit`` or ``discard``, the settle, ``commit()``, and the
-        deletion run in one transaction, and a raising ``commit`` rolls them
-        all back. Events and wakeups follow only a committed settle.
-        """
         if commit is None and not discard:
             settled = self._store.settle(stream_id, state, reason)
             if settled:
@@ -413,6 +402,7 @@ class Streams(LifecycleCapability):
             if discard:
                 outcome["deleted"] = self._delete_rows(stream_id)
 
+        # A raising commit rolls back the settle and the deletion with it.
         self.lifecycle.storage.transactionSync(cutover)
         if outcome["settled"]:
             self._emit_settled(stream_id, state, reason)
@@ -422,13 +412,11 @@ class Streams(LifecycleCapability):
         return outcome["settled"]
 
     def _delete_unchecked(self, stream_id: str) -> None:
-        """Delete a stream in any state, waking its readers so they end."""
         if self._delete_rows(stream_id):
             self._emit("stream:deleted", {"streamId": stream_id})
         self._wake(stream_id)
 
     def _delete_many(self, stream_ids: Sequence[str]) -> None:
-        """Delete streams in any state, without events."""
         for stream_id in stream_ids:
             self._delete_rows(stream_id)
             self._wake(stream_id)
@@ -436,7 +424,6 @@ class Streams(LifecycleCapability):
     def _read_chunks(
         self, stream_id: str, start: int, limit: int
     ) -> Sequence[StreamChunkRow]:
-        """Return one page of the log from ``start``, values as JSON text."""
         return [
             StreamChunkRow(
                 stream_id=stream_id, seq=seq, chunk=to_js_json(value), created_at=at

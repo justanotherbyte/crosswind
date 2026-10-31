@@ -1,7 +1,6 @@
-"""The services Lifecycle grants each installed capability (``self.lifecycle``).
+"""Port of upstream ``LifecycleServices`` (``lifecycle/capability.ts``).
 
-Port of upstream ``LifecycleServices`` (``lifecycle/capability.ts``). A
-capability talks to Lifecycle only through its hooks, these services, and
+A capability talks to Lifecycle only through its hooks, these services, and
 host-specific setters a composition root calls.
 """
 

@@ -1,14 +1,14 @@
-"""Chat's resumable streams on top of Streams (upstream ``chat/resumable-stream.ts``).
+"""Upstream ``chat/resumable-stream.ts``.
 
-Each turn's output is one stream in the shared chunk log, tagged with the
-turn's request id and marked as chat's by ``cfChat`` in its metadata (other
-producers' streams on the same object are never touched). Chunks are
-buffered into packed segments (up to 10 chunks or 512 KB) to save storage
-writes; a reconnecting client is sent the stored chunks as replay frames.
+Also ports ``chat/replay-frames.ts`` and ``chat/chunk-size.ts``.
 
-The interface is synchronous (it calls Streams' internal synchronous
-methods), so the agent can drive it from inside a SQLite transaction. Also
-ports ``chat/replay-frames.ts`` and ``chat/chunk-size.ts``.
+Each turn's output is one stream in the shared chunk log, marked as chat's by
+``cfChat`` in its metadata, so other producers' streams on the same object
+are never touched. Chunks are buffered into packed segments to save storage
+writes.
+
+The interface is synchronous, so the agent can drive it from inside a SQLite
+transaction.
 
 Not yet ported (12d, recovery): the progress marker (``cf_agents_chat_progress``)
 and the stream lookups recovery uses.
@@ -43,10 +43,9 @@ __all__ = (
 
 _log = logging.getLogger("agents.chat")
 
+# A chunk over the row limit is sent live but not stored.
 CHUNK_MAX_BYTES: Final = 1_800_000
-"""A chunk body larger than this (stored, JSON-escaped) is sent live but not stored."""
 CHAT_STREAM_MAX_CHUNK_BYTES: Final = 1_900_000
-"""The ``max_chunk_bytes`` of chat's Streams: one packed segment's ceiling."""
 
 _SEGMENT_CHUNKS = 10
 _BUFFER_MAX_CHUNKS = 100
@@ -57,12 +56,10 @@ _REMEMBERED_DELETED_TERMINALS = 32
 
 
 def create_chat_streams() -> Streams:
-    """Return the Streams capability a chat agent installs for its turns."""
     return Streams(max_chunk_bytes=CHAT_STREAM_MAX_CHUNK_BYTES)
 
 
 def stored_chunk_bytes(body: str) -> int:
-    """Return a chunk body's size in its stored (JSON-escaped) encoding."""
     return byte_length(dumps(body))
 
 
@@ -73,14 +70,6 @@ class _Terminal:
 
 
 class ResumableStream:
-    """The chat turn streams of one agent: storing, settling, and replaying.
-
-    Parameters
-    ----------
-    streams
-        The agent's chat Streams, already started.
-    """
-
     def __init__(self, streams: Streams) -> None:
         self._streams = streams
         self._active_stream_id: str | None = None
@@ -102,26 +91,21 @@ class ResumableStream:
 
     @property
     def active_stream_id(self) -> str | None:
-        """The stream being produced (or left streaming by a dead isolate)."""
         return self._active_stream_id
 
     @property
     def active_request_id(self) -> str | None:
-        """The request id of the active stream."""
         return self._active_request_id
 
     def has_active_stream(self) -> bool:
-        """Whether a stream is active."""
         return self._active_stream_id is not None
 
     @property
     def is_live(self) -> bool:
-        """Whether the active stream is produced by this isolate."""
         return self._is_live
 
     @property
     def pending_cutover_id(self) -> str | None:
-        """The stream finished and waiting for its cutover, if any."""
         return self._pending_cutover
 
     def start(
@@ -132,11 +116,6 @@ class ResumableStream:
         continuation: bool = False,
         origin_message_ids: Sequence[str] | None = None,
     ) -> str:
-        """Open a stream for a turn and return its id.
-
-        First reclaims what earlier turns left: settled streams (their
-        messages are saved) and live ones silent for over an hour.
-        """
         self.flush_buffer()
         seq_base = self._next_seq_for_request(request_id)
         self.reclaim()
@@ -159,10 +138,6 @@ class ResumableStream:
         return stream_id
 
     def complete(self, stream_id: str, outcome: ChatTurnOutcome | None = None) -> None:
-        """Settle a stream as completed.
-
-        ``outcome`` defaults to ``aborted`` for a restored stream.
-        """
         self.flush_buffer()
         orphaned = stream_id == self._active_stream_id and not self._is_live
         self._record_outcome(stream_id, outcome or ("aborted" if orphaned else None))
@@ -172,29 +147,20 @@ class ResumableStream:
         self._last_closed_stream_id = stream_id
         self._clear_active()
 
+    # Leaves the stream live until `cutover` or `finalize_pending` settles it, so
+    # a crash keeps the evidence recovery rebuilds the message from.
     def finish(self, stream_id: str, outcome: ChatTurnOutcome | None = None) -> None:
-        """Mark the producer finished, leaving the stream live for the cutover.
-
-        The agent then saves the message and settles the stream together
-        with `cutover`, or settles it alone with `finalize_pending`. Until
-        then a crash leaves the stream live: the evidence recovery rebuilds
-        the message from.
-        """
         self.flush_buffer()
         self._record_outcome(stream_id, outcome)
         self._pending_cutover = stream_id
         self._last_closed_stream_id = stream_id
         self._clear_active()
 
+    # One transaction, so a crash leaves either the live stream or the saved
+    # message, never neither.
     def cutover(
         self, stream_id: str, persist: Callable[[], None], *, discard: bool = True
     ) -> None:
-        """Settle a stream, run ``persist()``, and delete its rows in one transaction.
-
-        A crash leaves either the live stream or the saved message, never
-        neither. If the stream was already settled elsewhere, ``persist``
-        still runs (just not in the same transaction).
-        """
         self.flush_buffer()
         if not self._streams._settle(
             stream_id, "completed", None, commit=persist, discard=discard
@@ -205,7 +171,6 @@ class ResumableStream:
         self._clear_active()
 
     def finalize_pending(self) -> None:
-        """Settle a finished stream that had nothing to save (idempotent)."""
         stream_id = self._pending_cutover
         if stream_id is None:
             return
@@ -213,7 +178,6 @@ class ResumableStream:
         self._pending_cutover = None
 
     def mark_error(self, stream_id: str) -> None:
-        """Settle a stream as errored."""
         self.flush_buffer()
         self._streams._settle(stream_id, "errored", None)
         if self._pending_cutover == stream_id:
@@ -228,11 +192,6 @@ class ResumableStream:
         self._active_is_continuation = False
 
     def store_chunk(self, stream_id: str, body: str) -> int | None:
-        """Buffer a chunk body for storage; return its replay index.
-
-        ``None`` when the chunk is too large to store (it's still sent live,
-        but missing from replays) or the stream's count isn't tracked.
-        """
         size = stored_chunk_bytes(body)
         if size > CHUNK_MAX_BYTES:
             _log.warning(
@@ -256,12 +215,6 @@ class ResumableStream:
         return seq
 
     def flush_buffer(self) -> None:
-        """Write the buffered chunks as one segment.
-
-        One chunk is stored as its body; several as a JSON array of bodies.
-        Chunks for a stream that has since settled or been deleted are
-        dropped.
-        """
         if not self._buffer:
             return
         buffered, self._buffer, self._buffer_bytes = self._buffer, [], 0
@@ -270,18 +223,11 @@ class ResumableStream:
         segment: JSONValue = (
             buffered[0][1] if len(buffered) == 1 else [body for _, body in buffered]
         )
+        # A stream that settled or was deleted meanwhile drops its buffered chunks.
         with suppress(StreamClosedError):
             self._streams._append(stream_id, segment)
 
     def replay_chunks(self, connection: Connection, request_id: str) -> str | None:
-        """Replay the active stream to a reconnecting client.
-
-        A live stream ends with ``replayComplete`` (live frames follow). A
-        restored stream (no producer any more) ends with ``done`` and is
-        settled as aborted; its id is returned so the agent can save the
-        partial message. ``None`` otherwise, including when the connection
-        closed mid-replay (the stream is left as it was for the next try).
-        """
         stream_id = self._active_stream_id
         if stream_id is None:
             return None
@@ -294,7 +240,9 @@ class ResumableStream:
             continuation=continuation,
             first_seq=self._seq_base(stream_id),
         ):
-            return None
+            return None  # closed mid-replay, so the stream stays for the next try
+        # Nothing produces a restored stream any more, so it ends here and the
+        # agent saves its partial message.
         if not self._is_live:
             row = self._streams._get_stream(stream_id)
             chat = _chat_metadata(row) if row is not None else None
@@ -308,6 +256,7 @@ class ResumableStream:
             )
             self.complete(stream_id, "aborted")
             return stream_id
+        # Live frames follow.
         _send_replay_control(
             connection,
             request_id,
@@ -320,10 +269,6 @@ class ResumableStream:
     def replay_completed_chunks_by_request_id(
         self, connection: Connection, request_id: str
     ) -> bool:
-        """Replay a request's completed stream, ending in ``done``.
-
-        Returns ``False`` if there's none, or the connection closed.
-        """
         self.flush_buffer()
         row = self._latest_chat_row_by_tag(request_id, "completed")
         if row is None:
@@ -350,13 +295,6 @@ class ResumableStream:
     def replay_closed_stream_chunks(
         self, connection: Connection, request_id: str
     ) -> bool:
-        """Replay the request's just-closed stream, ending in ``replayComplete``.
-
-        Used while the agent still holds the request's terminal frames (the
-        message is being saved); they follow live. Once the cutover deleted
-        the rows, only the ``replayComplete`` is sent. Returns ``False`` if
-        the connection closed.
-        """
         self.flush_buffer()
         row = (
             self._streams._get_stream(self._last_closed_stream_id)
@@ -392,15 +330,10 @@ class ResumableStream:
     def replay_errored_chunks_by_request_id(
         self, connection: Connection, request_id: str
     ) -> bool:
-        """Replay an errored stream's chunks, with no terminal frame.
-
-        The caller sends the error frame next. Returns ``False`` only if the
-        connection closed mid-replay.
-        """
         self.flush_buffer()
         row = self._latest_chat_row_by_tag(request_id, "errored")
         if row is None:
-            return True
+            return True  # only a closed connection fails, the error frame follows
         chat = _chat_metadata(row)
         return _send_replay_bodies(
             connection,
@@ -411,18 +344,15 @@ class ResumableStream:
         )
 
     def stream_chunks(self, stream_id: str) -> list[str]:
-        """Return a stream's stored chunk bodies, in order."""
         return list(self._stored_bodies(stream_id))
 
     def get_stream_message_id(self, stream_id: str) -> str | None:
-        """Return the assistant message id a stream was producing."""
         row = self._streams._get_stream(stream_id)
         chat = _chat_metadata(row) if row is not None else None
         message_id = chat.get("messageId") if chat is not None else None
         return message_id if isinstance(message_id, str) else None
 
     def get_origin_message_ids(self, request_id: str) -> Sequence[str] | None:
-        """Return the user message ids the request's latest stream was started for."""
         row = self._latest_chat_row_by_tag(request_id)
         ids = _origin_ids(_chat_metadata(row)) if row is not None else None
         if ids is not None:
@@ -431,7 +361,6 @@ class ResumableStream:
         return deleted.message_ids if deleted is not None else None
 
     def get_outcome(self, request_id: str) -> ChatTurnOutcome | None:
-        """Return how the request's latest stream ended, if not plainly completed."""
         row = self._latest_chat_row_by_tag(request_id)
         outcome = _outcome(_chat_metadata(row)) if row is not None else None
         if outcome is not None:
@@ -440,7 +369,6 @@ class ResumableStream:
         return deleted.outcome if deleted is not None else None
 
     def restore(self) -> None:
-        """Adopt a stream a previous isolate left streaming, as the active one."""
         for row, chat in self._chat_rows():
             if row["state"] == "streaming":
                 self._active_stream_id = row["stream_id"]
@@ -450,7 +378,6 @@ class ResumableStream:
                 return
 
     def clear_all(self) -> None:
-        """Delete every chat stream (a chat clear)."""
         self._buffer, self._buffer_bytes = [], 0
         self._streams._delete_many([row["stream_id"] for row, _ in self._chat_rows()])
         self._deleted_terminals.clear()
@@ -458,11 +385,8 @@ class ResumableStream:
         self._clear_active()
 
     def reclaim(self, now: int | None = None) -> int:
-        """Delete settled chat streams and live ones silent past the retention.
-
-        Silence is the newest chunk's time (the row's ``updated_at`` is only
-        a first, cheap filter). Returns how many streams were deleted.
-        """
+        # Silence is measured from the newest chunk. The row's ``updated_at`` is
+        # only a first, cheap filter.
         cutoff = (now_ms() if now is None else now) - _ABANDONED_RETENTION_MS
         reclaimable = [
             row["stream_id"]
@@ -481,7 +405,6 @@ class ResumableStream:
         return len(reclaimable)
 
     def dispose(self) -> None:
-        """Stop observing stream deletions."""
         self._delete_hook.dispose()
 
     def _stored_bodies(self, stream_id: str) -> Iterator[str]:

@@ -1,10 +1,9 @@
-"""Durable background work: the Queue capability.
+"""Port of upstream ``queue/queue.ts``.
 
-Port of upstream ``queue/queue.ts``. Queue owns no storage: each pushed item
-becomes a Lifecycle job due immediately, whose ``fn`` is the callback name and
-whose payload carries the item's payload and the Lifecycle that owns it.
-Lifecycle runs the alarm loop, the retries, and the physical alarm
-(``.design/scheduling_queue_tasks_api.md``).
+Queue owns no storage: each pushed item becomes a Lifecycle job due
+immediately, whose ``fn`` is the callback name and whose payload carries the
+item's payload and the Lifecycle that owns it. Lifecycle runs the alarm loop,
+the retries, and the physical alarm (``.design/scheduling_queue_tasks_api.md``).
 """
 
 import logging
@@ -304,11 +303,6 @@ class Queue(LifecycleCapability):
         return None
 
     async def _run_routed(self, item: QueueItem) -> None:
-        """Run a routed item here, in its owning facet, with its own retries.
-
-        Platform failures re-raise, so the root keeps the item and its alarm
-        retries it in a fresh invocation.
-        """
         handler = self._resolve(item.callback)
         if handler is None:
             _log.error(
@@ -323,6 +317,8 @@ class Queue(LifecycleCapability):
                 should_retry=_retry_in_process,
             )
         except Exception as error:
+            # Re-raise so the root keeps the item and its alarm retries it in a
+            # fresh invocation.
             if is_platform_failure(error):
                 raise
             await self._report_failure(
@@ -400,7 +396,6 @@ class Queue(LifecycleCapability):
         return _item(job, envelope)
 
     def _next_time_ms(self) -> int:
-        """Return the next strictly increasing due time, never before now."""
         if self._last_time_ms is None:
             # Seed from the stored tail, so a fresh instance never sorts a new
             # item ahead of ones an earlier instance queued.
@@ -412,7 +407,6 @@ class Queue(LifecycleCapability):
         return time
 
     def _owned_jobs(self) -> Sequence[tuple[LifecycleJob, QueueJobPayload]]:
-        """Return every queue job with a valid envelope, in push order."""
         return [
             (job, envelope)
             for job in self.lifecycle.jobs.list()
@@ -453,11 +447,8 @@ class Queue(LifecycleCapability):
                 cancelled += 1
         return cancelled
 
+    # The host calls this when it deletes a facet and the facets under it.
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Remove the items owned by one routed Lifecycle subtree (internal).
-
-        The host calls this when it deletes a facet and the facets under it.
-        """
         for job, envelope in self._owned_jobs():
             owner = _owner(envelope)
             if owner is not None and (
@@ -487,24 +478,19 @@ def _owner_key(owner: RouteAddress | None) -> str | None:
 
 
 def _owner(envelope: QueueJobPayload) -> RouteAddress | None:
-    """Return the facet that owns an item, or ``None`` for a root item."""
     owner_path = envelope["owner_path"]
     if owner_path is None:
         return None
     return RouteAddress(key=envelope["owner_path_key"] or owner_path, data=owner_path)
 
 
+# Facet items share the root's job table, so their ids carry the owner key
+# (which URL-encodes ``#``). Root ids stay bare, as stored before scoping.
 def _job_id(owner: RouteAddress | None, id: str) -> str:
-    """Return the stored job id for an owner's item id.
-
-    Facet items share the root's job table, so their ids carry the owner key
-    (which URL-encodes ``#``); root ids stay bare, as stored before scoping.
-    """
     return id if owner is None else f"{owner.key}#{id}"
 
 
 def _envelope(job: LifecycleJob) -> QueueJobPayload | None:
-    """Return the queue envelope a job carries, or ``None`` if it's malformed."""
     raw = job.payload
     if not isinstance(raw, dict) or "owner_path" not in raw:
         return None

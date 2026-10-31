@@ -1,4 +1,4 @@
-"""The OAuth 2.1 client flow for one server, split across requests.
+"""The SDK's OAuth flow, split across requests.
 
 The SDK runs the redirect and the callback in one coroutine
 (``client/auth/oauth2.py``). A Durable Object can't wait in memory for a
@@ -40,20 +40,17 @@ _SECRET_AUTH_METHODS = ("client_secret_post", "client_secret_basic")
 
 @dataclass(slots=True, kw_only=True)
 class _Discovery:
-    """What the protected resource and authorization server metadata say."""
-
     issuer: str
     auth_server_url: str | None = None
     resource_metadata_url: str | None = None
     resource_metadata: dict[str, Any] | None = None
     server_metadata: dict[str, Any] | None = None
 
-    def endpoint(self, name: str, fallback: str, server_url: str) -> str:
-        """Return the metadata's ``<name>_endpoint``, or ``<origin>/<fallback>``."""
+    def endpoint(self, name: str, fallback_path: str, server_url: str) -> str:
         value = (self.server_metadata or {}).get(f"{name}_endpoint")
-        return (
-            value if isinstance(value, str) else urljoin(_origin(server_url), fallback)
-        )
+        if isinstance(value, str):
+            return value
+        return urljoin(_origin(server_url), fallback_path)
 
     def to_state(self, resource: str | None) -> OAuthDiscoveryState:
         state: OAuthDiscoveryState = {"authorizationServerUrl": self.issuer}
@@ -78,18 +75,6 @@ class _Discovery:
 
 
 class OAuthFlow:
-    """OAuth for one server: tokens on requests, a 401's next step, the exchange.
-
-    Parameters
-    ----------
-    provider
-        Where the server's OAuth state is stored.
-    server_url
-        The MCP server's endpoint.
-    http
-        The transport for metadata, registration and token requests.
-    """
-
     def __init__(
         self, provider: MCPOAuthProvider, *, server_url: str, http: HttpTransport
     ) -> None:
@@ -103,7 +88,6 @@ class OAuthFlow:
         self._lock = asyncio.Lock()
 
     async def authorization(self) -> str | None:
-        """Return ``Bearer <access token>``, if there are tokens."""
         if not self._tokens_loaded:
             self._tokens = await self.provider.tokens()
             self._tokens_loaded = True
@@ -126,17 +110,6 @@ class OAuthFlow:
         protocol_version: str | None,
         allow_refresh: bool,
     ) -> None:
-        """Refresh the tokens and return, or start authorizing and raise.
-
-        Raises
-        ------
-        MCPAuthorizationRequiredError
-            With the URL the user must visit.
-        MCPOAuthError
-            If discovery or registration fails.
-        MCPTransportError
-            If a metadata, registration or token request can't be sent.
-        """
         used = self._tokens
         async with self._lock:
             if self._tokens is not None and self._tokens is not used:
@@ -339,18 +312,6 @@ class OAuthFlow:
         return f"{endpoint}?{urlencode(params)}"
 
     async def exchange_code(self, *, code: str, state: str, iss: str | None) -> None:
-        """Trade the authorization code for tokens and store them.
-
-        Deletes the PKCE verifier whether or not the exchange succeeds.
-
-        Raises
-        ------
-        MCPOAuthError
-            If ``iss`` doesn't match the authorization server, the verifier or
-            client is missing, or the token endpoint refuses.
-        MCPTransportError
-            If the token request can't be sent.
-        """
         try:
             stored = await self.provider.discovery_state()
             discovery = (

@@ -1,10 +1,8 @@
-"""MCP protocol records: what the catalog and the call methods return.
+"""Field names follow ``mcp_types`` 2.3.0, and ``wire()`` names the camelCase keys.
 
-Dataclasses with snake_case attributes and ``wire()`` names for the
-camelCase JSON (``.design/utilities.md`` §5). Field names follow
-``mcp_types`` 2.3.0. Nested objects the client doesn't interpret
-(``annotations``, ``icons``, ``_meta``) stay plain dicts, and unknown keys
-are ignored, so a newer server never fails to decode.
+Nested objects the client doesn't interpret (``annotations``, ``icons``,
+``_meta``) stay plain dicts, and unknown keys are ignored, so a newer server
+never fails to decode. See ``.design/utilities.md`` §5.
 """
 
 import dataclasses
@@ -62,18 +60,13 @@ def _fields(cls: Any) -> tuple[_Field, ...]:
     )
 
 
-def _decode(cls: Any, payload: Mapping[str, Any], **nested: Any) -> dict[str, Any]:
-    """Return ``cls``'s keyword arguments from ``payload``; ``nested`` overrides.
-
-    Raises
-    ------
-    KeyError
-        If a required field is missing.
-    """
+def _init_kwargs(
+    cls: Any, payload: Mapping[str, Any], **decoded: Any
+) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     for f in _fields(cls):
-        if f.name in nested:
-            kwargs[f.name] = nested[f.name]
+        if f.name in decoded:
+            kwargs[f.name] = decoded[f.name]
         elif f.wire in payload:
             kwargs[f.name] = payload[f.wire]
         elif f.required:
@@ -82,20 +75,11 @@ def _decode(cls: Any, payload: Mapping[str, Any], **nested: Any) -> dict[str, An
 
 
 class _Record:
-    """Decoding for records whose fields are all plain JSON values."""
-
     __slots__ = ()
 
     @classmethod
     def from_wire(cls, payload: Mapping[str, Any]) -> Self:
-        """Return the record for a JSON object.
-
-        Raises
-        ------
-        KeyError
-            If a required field is missing.
-        """
-        return cls(**_decode(cls, payload))
+        return cls(**_init_kwargs(cls, payload))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -146,7 +130,7 @@ class Prompt(_Record):
         arguments = payload.get("arguments")
         if arguments is not None:
             arguments = [PromptArgument.from_wire(item) for item in arguments]
-        return cls(**_decode(cls, payload, arguments=arguments))
+        return cls(**_init_kwargs(cls, payload, arguments=arguments))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -274,7 +258,7 @@ class EmbeddedResource(_Record):
             If a required field is missing.
         """
         resource = _resource_contents(payload["resource"])
-        return cls(**_decode(cls, payload, resource=resource))
+        return cls(**_init_kwargs(cls, payload, resource=resource))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -324,7 +308,7 @@ class CallToolResult(_Record):
     def from_wire(cls, payload: Mapping[str, Any]) -> Self:
         """Return the result for a JSON object."""
         content = [_content(item) for item in payload.get("content", [])]
-        return cls(**_decode(cls, payload, content=content))
+        return cls(**_init_kwargs(cls, payload, content=content))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -356,7 +340,7 @@ class GetPromptResult(_Record):
             PromptMessage(role=item["role"], content=_content(item["content"]))
             for item in payload["messages"]
         ]
-        return cls(**_decode(cls, payload, messages=messages))
+        return cls(**_init_kwargs(cls, payload, messages=messages))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -376,7 +360,7 @@ class ReadResourceResult(_Record):
             If a required field is missing.
         """
         contents = [_resource_contents(item) for item in payload["contents"]]
-        return cls(**_decode(cls, payload, contents=contents))
+        return cls(**_init_kwargs(cls, payload, contents=contents))
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)

@@ -1,4 +1,4 @@
-"""WebSocket connections and the Agents connect protocol (upstream ``websockets/``)."""
+"""Port of upstream ``websockets/``."""
 
 from .connection import Connection
 from .errors import ConnectionStateTooLargeError, DuplicateConnectionIdError

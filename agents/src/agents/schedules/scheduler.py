@@ -1,10 +1,9 @@
-"""Persistent schedules: the Scheduler capability.
+"""Port of upstream ``schedules/scheduler.ts``.
 
-Port of upstream ``schedules/scheduler.ts``. Scheduler owns no storage: each
-schedule is one Lifecycle job whose ``fn`` is the callback name and whose
-payload carries the schedule's timing and the Lifecycle that owns it.
-Lifecycle runs the alarm loop, the retries, and the physical alarm
-(``.design/scheduling_queue_tasks_api.md``).
+Scheduler owns no storage: each schedule is one Lifecycle job whose ``fn`` is
+the callback name and whose payload carries the schedule's timing and the
+Lifecycle that owns it. Lifecycle runs the alarm loop, the retries, and the
+physical alarm (``.design/scheduling_queue_tasks_api.md``).
 """
 
 import dataclasses
@@ -367,10 +366,6 @@ class Scheduler(LifecycleCapability):
     async def _dispatch_to_owner(
         self, owner: RouteAddress, job: LifecycleJob, envelope: ScheduleJobPayload
     ) -> bool:
-        """Hand a facet's schedule to the facet; return whether it was delivered.
-
-        The facet retries the callback itself, so this is one attempt.
-        """
         message: DispatchMessage = {
             "type": "dispatch",
             "schedule": WireSchedule(
@@ -378,6 +373,7 @@ class Scheduler(LifecycleCapability):
             ),
             "retry": retry_to_json(job.retry) if job.retry is not None else None,
         }
+        # One attempt only, because the facet retries the callback itself.
         try:
             await self.lifecycle.routes.to(owner, message)
         except Exception as error:
@@ -395,11 +391,6 @@ class Scheduler(LifecycleCapability):
     async def _run_routed(
         self, schedule: Schedule, envelope: ScheduleJobPayload, retry: RetryOptions
     ) -> None:
-        """Run a routed schedule here, in its owning facet, with its own retries.
-
-        A one-shot's platform failure re-raises, so the root keeps the job
-        and its alarm retries it in a fresh invocation.
-        """
         handler = self._resolve(schedule.callback)
         if handler is None:
             _log.error("Schedule callback %r not found", schedule.callback)
@@ -414,6 +405,8 @@ class Scheduler(LifecycleCapability):
                 ),
             )
         except Exception as error:
+            # Re-raise a one-shot's platform failure so the root keeps the job
+            # and its alarm retries it in a fresh invocation.
             if one_shot and is_platform_failure(error):
                 raise
             await self._report_failure(
@@ -474,10 +467,6 @@ class Scheduler(LifecycleCapability):
         retry_json: str | None,
         idempotent: bool | None,
     ) -> tuple[Schedule, bool]:
-        """Push a schedule job, or reuse the one an idempotent call matches.
-
-        Returns the schedule and whether it's new.
-        """
         # Recurring schedules deduplicate unless told not to; one-shots only
         # when asked.
         if idempotent if idempotent is not None else is_recurring(timing):
@@ -573,7 +562,6 @@ class Scheduler(LifecycleCapability):
     async def _cancel_for_owner(
         self, owner: RouteAddress | None, id: str
     ) -> str | None:
-        """Cancel one schedule; return its callback name, or ``None`` if absent."""
         found = self._get_for_owner(owner, id)
         if found is None:
             return None
@@ -581,7 +569,6 @@ class Scheduler(LifecycleCapability):
         return found.callback
 
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Remove the schedules owned by one routed Lifecycle subtree (internal)."""
         for job, envelope in self._owned_jobs():
             owner = _owner(envelope)
             if owner is not None and (
@@ -614,10 +601,6 @@ class Scheduler(LifecycleCapability):
     def _warn_if_scheduled_during_startup(
         self, timing: ScheduleTiming, callback: str, idempotent: bool | None
     ) -> None:
-        """Warn once per callback about a one-shot created on every wake.
-
-        Passing ``idempotent`` either way opts out.
-        """
         if (
             self.lifecycle.status() != "starting"
             or idempotent is not None
@@ -640,7 +623,6 @@ def _owner_key(owner: RouteAddress | None) -> str | None:
 
 
 def _owner(envelope: ScheduleJobPayload) -> RouteAddress | None:
-    """Return the facet that owns a schedule, or ``None`` for a root schedule."""
     owner_path = envelope["owner_path"]
     if owner_path is None:
         return None
@@ -648,7 +630,6 @@ def _owner(envelope: ScheduleJobPayload) -> RouteAddress | None:
 
 
 def _envelope(job: LifecycleJob) -> ScheduleJobPayload | None:
-    """Return a schedule job's payload, or ``None`` if it's malformed."""
     raw = job.payload
     if not isinstance(raw, dict):
         return None
@@ -688,7 +669,6 @@ def _timing(envelope: ScheduleJobPayload) -> ScheduleTiming:
 
 
 def _recurrence(envelope: ScheduleJobPayload) -> JobOutcome:
-    """Move a recurring schedule to its next time; complete a one-shot."""
     cron = envelope["cron"]
     if envelope["type"] == "cron" and cron is not None:
         return Reschedule(at=from_epoch_ms(next_cron_ms(cron, now_ms())))

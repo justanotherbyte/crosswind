@@ -1,11 +1,7 @@
-"""Where a server's OAuth state lives.
+"""Port of upstream ``client/do-oauth-client-provider.ts``.
 
-Tokens, client credentials, and the ``state`` / PKCE verifier that a later
-callback request redeems.
-
-Port of upstream ``client/do-oauth-client-provider.ts``, with its Durable
-Object KV key layout, so state written by a TypeScript agent is read here
-(``.design/mcp_engine.md`` §7.1).
+It keeps upstream's Durable Object KV key layout, so state written by a
+TypeScript agent is read here. See ``.design/mcp_engine.md`` §7.1.
 """
 
 import secrets
@@ -29,8 +25,6 @@ _DELETE_CHUNK = 128
 
 
 class OAuthDiscoveryState(TypedDict, total=False):
-    """What discovery found, kept for the callback's code exchange."""
-
     authorizationServerUrl: str
     resourceMetadataUrl: str
     resourceMetadata: dict[str, Any]

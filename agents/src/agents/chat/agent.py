@@ -1,17 +1,12 @@
-"""``AIChatAgent``: an agent that runs chat turns (upstream ``ai-chat/src/index.ts``).
+"""Upstream ``ai-chat/src/index.ts``.
 
-The transcript is stored in Sessions and mirrored, as wire-form dicts, into
-memory (``self.messages`` decodes them on demand). A turn runs
-``on_chat_message`` and streams what it yields to every client as
-``cf_agent_use_chat_response`` frames, storing each chunk in a resumable
-stream so a client that reconnects mid-turn is sent the replay; the
-finished message is saved in the same transaction that settles the stream
-(``.design/chat_engine.md`` §5).
+Each streamed chunk is stored in a resumable stream, so a client that
+reconnects mid-turn is sent the replay. The finished message is saved in the
+same transaction that settles the stream (``.design/chat_engine.md`` §5).
 
-Turns run one at a time from a queue. Each turn's consumption of
-``on_chat_message`` runs in its own task, which a cancel (the client's stop,
-`AIChatAgent.abort_request`, or cancelling the code awaiting
-`AIChatAgent.save_messages`) cancels; the turn then ends as ``aborted``.
+Each turn's consumption of ``on_chat_message`` runs in its own task, which a
+cancel (the client's stop, `AIChatAgent.abort_request`, or cancelling the code
+awaiting `AIChatAgent.save_messages`) cancels. The turn then ends as ``aborted``.
 
 Not yet ported: client tools and approvals (12c); running turns as Tasks,
 recovery, and the stall watchdog (12d).
@@ -128,8 +123,6 @@ class _Cutover:
 
 @dataclass(slots=True)
 class _Turn:
-    """One turn's consumption state."""
-
     request_id: str
     stream_id: str
     message: WireMessage
@@ -399,7 +392,7 @@ class AIChatAgent(Agent[S]):
         self._turn_queue.reset()
         self.abort_all_requests()
         self._submit.reset()
-        self._pre_stream.release_awaiting()
+        self._pre_stream.release_parked()
         self._pre_stream.reset()
         self._pending_responses.clear()
 
@@ -587,7 +580,7 @@ class AIChatAgent(Agent[S]):
     ) -> None:
         idle = self._pre_stream.settle(request_id)
         if release_parked and idle and not self._stream.has_active_stream():
-            self._pre_stream.release_awaiting()
+            self._pre_stream.release_parked()
 
     def _submit_decision(self, is_submit_message: bool) -> SubmitDecision:
         decision = self._submit.decide(
@@ -693,11 +686,6 @@ class AIChatAgent(Agent[S]):
         body: dict[str, Any] | None,
         exclude: Sequence[str | Connection],
     ) -> _ReplyResult:
-        """Run one turn: on_chat_message's reply, streamed and saved.
-
-        The reply runs in its own task. Cancelling the caller stops it,
-        waits for it to settle, and re-raises.
-        """
         options = ChatMessageOptions(
             request_id=request_id,
             client_tools=tuple(
@@ -715,6 +703,7 @@ class AIChatAgent(Agent[S]):
         task = asyncio.ensure_future(
             self.keep_alive_while(partial(self._reply, options, tuple(exclude)))
         )
+        # A cancelled caller aborts the reply but still waits for it to settle.
         cancelled = False
         try:
             while not task.done():
@@ -805,8 +794,8 @@ class AIChatAgent(Agent[S]):
                 request_id, None if persisted else "Failed to save the response."
             )
 
+    # The turn's only cancellable stretch.
     async def _consume(self, turn: _Turn, options: ChatMessageOptions) -> _ReplyResult:
-        """Stream on_chat_message's output: the turn's one cancellable stretch."""
         request_id = turn.request_id
         current = asyncio.current_task()
         assert current is not None
@@ -900,12 +889,8 @@ class AIChatAgent(Agent[S]):
         _check_order(turn, data, type(item).__name__)
         return self._apply_and_send(turn, data)
 
+    # Port of upstream ``_streamSSEReply``'s loop body.
     def _apply_and_send(self, turn: _Turn, data: dict[str, Any]) -> _ReplyResult | None:
-        """Apply one wire chunk to the message, then store and broadcast it.
-
-        Port of upstream ``_streamSSEReply``'s loop body. Returns the turn's
-        result when the chunk ends it (an ``error`` chunk).
-        """
         message = turn.message
         parts: list[dict[str, Any]] = message["parts"]
         kind = data.get("type")
@@ -1052,7 +1037,6 @@ class AIChatAgent(Agent[S]):
         self._pending_resume.clear()
 
     async def _persist_orphaned_stream(self, stream_id: str) -> None:
-        """Save the partial message of a stream a dead isolate left behind."""
         bodies = self._stream.stream_chunks(stream_id)
         if not bodies:
             return
@@ -1096,7 +1080,6 @@ class AIChatAgent(Agent[S]):
         exclude: Iterable[str | Connection] = (),
         delete_stale_rows: bool = False,
     ) -> None:
-        """Persist wire messages: through an override of persist_messages if any."""
         if not self._persist_overridden:
             await self._persist_wire(
                 messages, exclude=exclude, delete_stale_rows=delete_stale_rows
@@ -1349,15 +1332,12 @@ class AIChatAgent(Agent[S]):
 
 
 class _ChatHost(LifecycleCapability):
-    """Chat's startup and its ``get-messages`` route."""
-
     def __init__(self, agent: AIChatAgent[Any]) -> None:
         super().__init__("chat")
         self._agent = agent
 
     @override
     async def on_start(self) -> None:
-        """Restore the request context and active stream, then load the transcript."""
         agent = self._agent
         self.lifecycle.sql(
             "CREATE TABLE IF NOT EXISTS cf_ai_chat_request_context"
@@ -1372,7 +1352,6 @@ class _ChatHost(LifecycleCapability):
 
     @override
     async def on_request(self, request: "Request") -> Response | None:
-        """Serve ``…/get-messages``: the stored transcript, streamed as JSON."""
         path = request.url.split("?", 1)[0].split("#", 1)[0]
         if path.rsplit("/", 1)[-1] != "get-messages":
             return None
@@ -1383,8 +1362,6 @@ class _ChatHost(LifecycleCapability):
 
 
 class _MessagesView(Sequence[UIMessage]):
-    """``self.messages``: typed messages decoded on access, cached per dict."""
-
     __slots__ = ("_cache", "_wire")
 
     def __init__(
@@ -1447,7 +1424,6 @@ def _default_repair(part: dict[str, Any]) -> dict[str, Any]:
 def _with_message(
     messages: Sequence[WireMessage], message: WireMessage
 ) -> list[WireMessage]:
-    """Return ``messages`` with ``message`` replacing its id's entry, or appended."""
     updated = list(messages)
     for index, existing in enumerate(updated):
         if existing["id"] == message["id"]:
@@ -1510,12 +1486,9 @@ _NEEDS_START = {
 }
 
 
+# The AI SDK client rejects an unopened delta or end and drops the whole reply,
+# so the turn fails here instead, saying what was wrong.
 def _check_order(turn: _Turn, data: dict[str, Any], chunk_name: str) -> None:
-    """Raise if a delta or end chunk has no open start in this stream.
-
-    The AI SDK client rejects such a chunk and drops the whole reply, so the
-    turn fails instead, saying what was wrong.
-    """
     kind = data["type"]
     if kind in _OPENED_BY:
         part, id_field = _OPENED_BY[kind]

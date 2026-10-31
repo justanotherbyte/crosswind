@@ -1,10 +1,6 @@
-"""The alarm event loop that drives the job queue.
+"""Port of upstream ``lifecycle/job-driver.ts``.
 
-Port of upstream ``lifecycle/job-driver.ts``. When the physical alarm fires
-the driver: arms a deadman alarm, drives due jobs in due order (single-flight
-skip and hung recovery, per-job retries, platform-failure deferral, terminal
-failure hooks), runs the host's alarm hook, and re-arms the alarm, all inside
-the alarm memory-limit circuit breaker (upstream #1825).
+The memory-limit circuit breaker is upstream #1825.
 """
 
 import asyncio
@@ -55,31 +51,6 @@ _alarm_scope: ContextVar[AlarmScope | None] = ContextVar(
 
 
 class JobDriver:
-    """Drives the job queue when the Durable Object's alarm fires.
-
-    Parameters
-    ----------
-    queue
-        The object's job queue.
-    storage
-        The object's ``ctx.storage`` (Workers SDK wrapper).
-    disabled
-        Returns ``True`` once the host is being destroyed; the driver then
-        stops touching storage.
-    resolve_dispatch
-        Resolves a job's owner to its dispatch hooks, or ``None``.
-    max_memory_limit_strikes
-        Consecutive memory-limit resets tolerated before sealing.
-    on_memory_limit
-        Capability and host policy applied on each strike.
-    emit
-        Best-effort lifecycle telemetry.
-    rearm
-        Recomputes the physical alarm from queue state.
-    reset
-        Schedules an isolate reset that doesn't retry the current alarm.
-    """
-
     def __init__(
         self,
         *,
@@ -91,7 +62,7 @@ class JobDriver:
         on_memory_limit: Callable[[MemoryLimitContext], Awaitable[None]],
         emit: Callable[[str, dict[str, Any]], None],
         rearm: Callable[[], Awaitable[None]],
-        reset: Callable[[str], None],
+        reset_isolate: Callable[[str], None],
     ) -> None:
         self._queue = queue
         self._storage = storage
@@ -101,7 +72,7 @@ class JobDriver:
         self._on_memory_limit = on_memory_limit
         self._emit = emit
         self._rearm = rearm
-        self._reset = reset
+        self._reset_isolate = reset_isolate
         self._alarms_in_flight = 0
         # Handed-off work still running; while non-empty a clean alarm must not
         # clear the strike counter (a handoff may yet report a reset).
@@ -118,12 +89,8 @@ class JobDriver:
         initialize: Callable[[], Awaitable[None]],
         run_host_alarm: Callable[[], Awaitable[None]],
     ) -> None:
-        """Run one alarm invocation inside the memory-limit circuit breaker.
-
-        A memory-limit reset is intercepted and handled here, where the heavy
-        work has unwound; any other error re-raises so the platform's alarm
-        retry still applies.
-        """
+        # A memory-limit reset is handled here, where the heavy work has unwound;
+        # any other error re-raises so the platform's alarm retry still applies.
         self._alarms_in_flight += 1
         clean = False
         try:
@@ -149,15 +116,6 @@ class JobDriver:
         await self._rearm()
 
     def track_alarm_work(self, work: asyncio.Future[Any]) -> bool:
-        """Keep work a job handed off inside this alarm's breaker domain.
-
-        Returns
-        -------
-        bool
-            ``True`` when called from an alarm-driven dispatch or the host's
-            alarm hook (tracking the same work again is a no-op); ``False``
-            otherwise, and nothing is tracked.
-        """
         scope = _alarm_scope.get()
         if scope is None:
             return False
@@ -211,7 +169,7 @@ class JobDriver:
             # An earlier dispatch may have pushed, rescheduled, or cancelled
             # this job; a row that is gone or no longer due belongs to that
             # newer intent.
-            row = self._queue.due_row(stale["id"], now)
+            row = self._queue.still_due(stale["id"], now)
             if row is None:
                 continue
             if row["singleflight"] == 1 and row["running"] == 1:
@@ -269,7 +227,7 @@ class JobDriver:
                     row["id"],
                 )
                 raise AttributedPlatformFailure(row, error) from error
-            outcome = await self._job_error_outcome(dispatch, job, retry, error)
+            outcome = await self._terminal_failure_outcome(dispatch, job, retry, error)
         finally:
             watchdog.cancel()
         if self._disabled():
@@ -284,14 +242,13 @@ class JobDriver:
 
         return await run_with_retries(attempt, retry, should_retry=_retry_in_process)
 
-    async def _job_error_outcome(
+    async def _terminal_failure_outcome(
         self,
         dispatch: JobDispatch,
         job: LifecycleJob,
         retry: RetryOptions,
         error: Exception,
     ) -> JobOutcome:
-        """Let the owner decide what a terminally failed job becomes."""
         if dispatch.on_job_error is None:
             return None
         context = JobContext(job=job, attempt=retry.max_attempts)
@@ -346,13 +303,6 @@ class JobDriver:
     async def _handle_memory_limit_reset(
         self, error: BaseException, executing: JobRow | None
     ) -> None:
-        """Break the platform's alarm-retry loop after a memory-limit reset.
-
-        A durable counter tolerates a few consecutive strikes, backing off the
-        executing job and every recovery-loop job, then seals: those jobs are
-        purged. Each step is best-effort; even small writes can fail on a
-        condemned isolate, and returning still stops the platform's retry.
-        """
         first = self._strike is None
         self._strike_recorded_this_isolate = True
         if first:
@@ -384,7 +334,7 @@ class JobDriver:
         except Exception:
             _log.exception("Couldn't sync the memory-limit strike; not resetting")
             return
-        self._reset(
+        self._reset_isolate(
             f"Alarm memory-limit strike {strike.strikes}/{strike.limit}"
             f"{' (sealed)' if strike.sealed else ''}; resetting isolate"
         )
@@ -400,7 +350,6 @@ class JobDriver:
             self._queue.retime(row["id"], strike.next_time_ms)
 
     async def _record_strike(self, error: BaseException) -> MemoryLimitStrike:
-        """Record one strike durably and apply the queue-wide policy once."""
         strikes = 1
         try:
             prior = await self._storage.get(_OOM_ALARM_STRIKES_KEY)

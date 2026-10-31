@@ -1,10 +1,6 @@
-"""The Agent class: a Durable Object built from Lifecycle capabilities.
+"""Port of upstream ``index.ts`` (``Agent``).
 
-Port of upstream ``index.ts`` (``Agent``). ``Agent`` installs sub-agents,
-Scheduler, Queue, State, WebSockets, and Tasks on its Lifecycle, drives the
-connect sequence, answers ``@callable`` methods, forwards ``/sub/`` requests
-and sockets to sub-agents, and applies its error policy around the user's
-hooks (``.design/agent_api.md``, ``.design/subagents_engine.md``).
+See ``.design/agent_api.md`` and ``.design/subagents_engine.md``.
 """
 
 import asyncio
@@ -1086,7 +1082,7 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         await self.on_close(connection, code, reason, was_clean)
 
     async def _after_connect_frames(self, connection: Connection) -> None:
-        """Send an SDK subclass's own connect frames, before ``on_connect``."""
+        pass  # SDK subclasses override this to send their own connect frames.
 
     async def _cleanup_route_prefix(self, prefix: str) -> None:
         await self._scheduler._cleanup_route_prefix(prefix)
@@ -1188,7 +1184,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
     async def _report_error(
         self, connection: Connection | None, error: Exception
     ) -> None:
-        """Tell ``on_error`` about an error it can't handle; never raises."""
         try:
             await self.on_error(connection, error)
         except Exception as raised:
@@ -1223,23 +1218,17 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
 
 
 class _AgentState(State[Any]):
-    """State whose initial value is a fresh copy of the agent's ``initial_state``.
-
-    Read when first needed, so an ``initial_state`` set in ``__init__`` counts.
-    """
-
     def __init__(self, agent: Agent[Any], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._agent = agent
 
+    # Read when first needed, so an initial_state set in __init__ counts.
     def _initial_value(self) -> Any:
         initial = self._agent.initial_state
         return json.loads(json.dumps(initial)) if initial is not None else None
 
 
 class _AgentHooks:
-    """The host hooks Lifecycle calls, with Agent's error policy around them."""
-
     __slots__ = ("_agent",)
 
     def __init__(self, agent: Agent[Any]) -> None:
@@ -1280,8 +1269,6 @@ class _AgentHooks:
 
 
 class _AgentConnectionHandlers:
-    """Agent's handlers for the root's sockets: forward, or handle locally."""
-
     __slots__ = ("_agent",)
 
     def __init__(self, agent: Agent[Any]) -> None:
@@ -1316,13 +1303,10 @@ class _AgentConnectionHandlers:
             await self._agent.on_error(connection, error)
 
 
+# Methods reached through native RPC bypass every SDK hook, so without this
+# get_current_agent() returns None there. Inside the agent's own context the
+# method runs as-is, keeping its connection and request.
 def _in_agent_context(method: FunctionType) -> Callable[..., Any]:
-    """Wrap a public agent method so it runs as the current agent.
-
-    Methods reached through native RPC bypass every SDK hook; this makes
-    ``get_current_agent()`` work there. Inside an existing context for the
-    same agent the method runs as-is, keeping its connection and request.
-    """
     if inspect.isasyncgenfunction(method):
 
         @functools.wraps(method)

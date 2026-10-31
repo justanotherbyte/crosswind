@@ -1,5 +1,3 @@
-"""Exceptions raised by the Scheduler."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("InvalidCronExpressionError",)

@@ -1,17 +1,8 @@
-"""Aligning client-sent messages with stored ones.
-
-Port of upstream ``chat/message-reconciler.ts``.
+"""Upstream ``chat/message-reconciler.ts``.
 
 A client submits its whole transcript, and its copies of assistant messages
 can be stale: built under a temporary id, or still showing a tool call the
-server has since settled. Before saving, three passes run in order:
-
-1. give an incoming assistant message its stored id (exact id, then the same
-   tool calls, then the same content);
-2. merge server-known tool outputs into incoming copies still pending;
-3. drop stale duplicate assistant copies echoed in the same submit.
-
-Works on wire-form dictionaries; inputs aren't mutated.
+server has since settled. Inputs aren't mutated.
 """
 
 from collections.abc import Callable, Sequence
@@ -44,7 +35,6 @@ def reconcile_messages(
     server_messages: Sequence[Message],
     sanitize_for_content_key: Sanitize | None = None,
 ) -> list[Message]:
-    """Return ``incoming`` aligned with ``server_messages`` (the three passes)."""
     with_ids = _reconcile_assistant_ids(
         incoming, server_messages, sanitize_for_content_key
     )
@@ -55,7 +45,6 @@ def reconcile_messages(
 def resolve_tool_merge_id(
     message: Message, server_messages: Sequence[Message]
 ) -> Message:
-    """Give an assistant message the id of the stored message sharing a tool call."""
     if message.get("role") != "assistant":
         return message
     for part in message["parts"]:
@@ -68,7 +57,6 @@ def resolve_tool_merge_id(
 
 
 def reconcile_orphan_partial(existing: Message, incoming: Message) -> Message:
-    """Merge a rebuilt partial into the stored message, keeping existing tool calls."""
     existing_ids = {p["toolCallId"] for p in existing["parts"] if "toolCallId" in p}
     new_parts = [
         p
@@ -88,7 +76,6 @@ def reconcile_orphan_partial(existing: Message, incoming: Message) -> Message:
 def assistant_content_key(
     message: Message, sanitize: Sanitize | None = None
 ) -> str | None:
-    """Return the JSON of an assistant message's parts (``None`` for others)."""
     if message.get("role") != "assistant":
         return None
     sanitized = sanitize(message) if sanitize is not None else message

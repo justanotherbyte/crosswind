@@ -1,23 +1,7 @@
-"""The Lifecycle: a Durable Object's single entry point and dispatcher.
-
-Port of upstream ``lifecycle/durable-object-lifecycle.ts``. It replaces the
-runtime entry points (``fetch``, ``alarm``, ``webSocket*``), runs startup once
-per wake, owns the job queue and the one physical alarm, and dispatches events
-to installed capabilities (``.design/lifecycle_capabilities.md``).
+"""Port of upstream ``lifecycle/durable-object-lifecycle.ts``.
 
 The host delegates its entry points explicitly instead of having them patched
-(``.design/lifecycle_capabilities.md`` §9)::
-
-    class Room(DurableObject):
-        def __init__(self, ctx, env):
-            super().__init__(ctx, env)
-            self.lifecycle = Lifecycle(self).use(Scheduler(target=self))
-
-        async def fetch(self, request):
-            return await self.lifecycle.fetch(request)
-
-        async def alarm(self, *args):
-            await self.lifecycle.alarm()
+(``.design/lifecycle_capabilities.md`` §9).
 """
 
 import asyncio
@@ -141,7 +125,7 @@ class Lifecycle:
             on_memory_limit=self._on_memory_limit,
             emit=partial(self._emit, "lifecycle"),
             rearm=self.rearm_alarm,
-            reset=partial(_ffi.abort_without_alarm_retry, self._ctx),
+            reset_isolate=partial(_ffi.abort_without_alarm_retry, self._ctx),
         )
 
     @property
@@ -568,7 +552,6 @@ class Lifecycle:
 
 
 def is_upgrade_request(request: "Request") -> bool:
-    """Return whether ``request`` is a WebSocket upgrade."""
     upgrade = request.headers.get("Upgrade")
     return upgrade is not None and upgrade.lower() == "websocket"
 

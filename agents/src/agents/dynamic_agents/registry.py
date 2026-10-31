@@ -1,8 +1,7 @@
-"""A parent's registry of the sub-agents it created (``cf_agents_sub_agents``).
+"""Port of upstream ``dynamic-agents/registry.ts``.
 
-Port of upstream ``dynamic-agents/registry.ts``. Python has no legacy
-(bare-name) facets, so every row is a path-scoped identity
-(``.design/subagents_engine.md`` §3.2 item 1).
+Python has no legacy (bare-name) facets, so every row is a path-scoped
+identity (``.design/subagents_engine.md`` §3.2 item 1).
 """
 
 from collections.abc import Sequence
@@ -17,14 +16,6 @@ _IDENTITY_VERSION = "path-v2"
 
 
 class SubAgentRegistry:
-    """The sub-agents one parent created, in its own SQLite.
-
-    Parameters
-    ----------
-    sql
-        The parent's SQL helper.
-    """
-
     __slots__ = ("_ready", "_sql")
 
     def __init__(self, sql: Sql) -> None:
@@ -47,7 +38,6 @@ class SubAgentRegistry:
         self._ready = True
 
     def record(self, class_name: str, name: str, identity: str) -> None:
-        """Record a child (no-op if it's already recorded)."""
         self._ensure()
         self._sql(
             """INSERT OR IGNORE INTO cf_agents_sub_agents
@@ -61,7 +51,6 @@ class SubAgentRegistry:
         )
 
     def identity(self, class_name: str, name: str) -> str | None:
-        """Return a recorded child's identity name, or ``None``."""
         self._ensure()
         rows = self._sql(
             """SELECT identity_name FROM cf_agents_sub_agents
@@ -72,7 +61,6 @@ class SubAgentRegistry:
         return rows[0]["identity_name"] if rows else None
 
     def forget(self, class_name: str, name: str) -> None:
-        """Remove a child's row."""
         self._ensure()
         self._sql(
             "DELETE FROM cf_agents_sub_agents WHERE class = ? AND name = ?",
@@ -81,11 +69,9 @@ class SubAgentRegistry:
         )
 
     def has(self, class_name: str, name: str) -> bool:
-        """Return whether a child is recorded."""
         return self.identity(class_name, name) is not None
 
     def list(self, class_name: str | None = None) -> Sequence[SubAgentInfo]:
-        """Return the recorded children, oldest first, optionally of one class."""
         self._ensure()
         rows = self._sql(
             """SELECT class, name, created_at FROM cf_agents_sub_agents

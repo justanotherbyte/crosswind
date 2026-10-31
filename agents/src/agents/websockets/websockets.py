@@ -1,10 +1,7 @@
-"""WebSocket connections for a Lifecycle object: the WebSockets capability.
+"""Port of upstream ``websockets/websockets.ts``, without the Cap'n Web wire.
 
-Port of upstream ``websockets/websockets.ts`` (without the Cap'n Web wire,
-which is out of scope). The capability claims every upgrade, accepts it with
-the Hibernation API, runs the connection handlers in the host context,
-completes close handshakes, and speaks the connect sequence and state sync of
-the Agents protocol (``.design/agents_wire_protocol.md`` §3, §5.2).
+The Cap'n Web wire is out of scope. See ``.design/agents_wire_protocol.md``
+§3 and §5.2 for the connect sequence and state sync.
 """
 
 import json
@@ -50,6 +47,7 @@ _STATE_ERROR = "cf_agent_state_error"
 # sent, and there's no peer left to answer.
 _RESERVED_CLOSE_CODES = frozenset({1005, 1006, 1015})
 
+# Platform limits on hibernatable socket tags.
 _MAX_TAGS = 10
 _MAX_TAG_LENGTH = 256
 
@@ -445,14 +443,6 @@ class WebSockets(LifecycleCapability):
 
 
 def _prepare_tags(connection_id: str, tags: list[str]) -> list[str]:
-    """Return the tags to accept under: the id first, without duplicates.
-
-    Raises
-    ------
-    ValueError
-        If there are more than 10 tags (with the id), or a tag is empty,
-        not a string, or longer than 256 characters (platform limits).
-    """
     prepared = [connection_id, *(tag for tag in tags if tag != connection_id)]
     if len(prepared) > _MAX_TAGS:
         raise ValueError(
@@ -469,7 +459,6 @@ def _prepare_tags(connection_id: str, tags: list[str]) -> list[str]:
 
 
 def _parse_frame(message: str | bytes) -> dict[str, Any] | None:
-    """Return a text message as a JSON object, or ``None`` if it isn't one."""
     if not isinstance(message, str):
         return None
     try:
@@ -489,7 +478,6 @@ def _is_state_frame(frame: Any) -> bool:
 
 
 def _send(connection: Connection, text: str | bytes) -> None:
-    """Send one frame, tolerating a client that disconnected meanwhile."""
     with suppress(_ffi.JsException):
         connection.send(text)
 
@@ -502,8 +490,8 @@ def _state_frame(state: Any) -> str:
     return json.dumps({"type": _STATE, "state": state})
 
 
+# Echoing the client's Close frame completes the close handshake.
 def _reciprocate_close(ws: WebSocket, code: int, reason: str) -> None:
-    """Echo a client's Close frame, completing the handshake (best-effort)."""
     if code in _RESERVED_CLOSE_CODES:
         return
     with suppress(_ffi.JsException):  # already closed, or a code it can't send

@@ -1,8 +1,6 @@
-"""Applying tool results and approvals to tool parts (upstream ``chat/tool-state.ts``).
+"""Upstream ``chat/tool-state.ts``.
 
-Each update names a tool call, the states it may apply in, and how to change
-the part. Works on wire-form dictionaries and returns new ones (the input
-isn't mutated).
+Updates return new parts and never mutate their input.
 """
 
 from collections.abc import Callable, Iterable, Sequence
@@ -37,8 +35,6 @@ _ALL_STATES = (
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class ToolPartUpdate:
-    """A change to the tool part for ``tool_call_id``, if it's in ``match_states``."""
-
     tool_call_id: str
     match_states: tuple[str, ...]
     apply: Callable[[Part], Part]
@@ -47,10 +43,6 @@ class ToolPartUpdate:
 def apply_tool_update(
     parts: Sequence[Part], update: ToolPartUpdate
 ) -> tuple[list[Part], int] | None:
-    """Apply ``update`` to the first matching part.
-
-    Returns the new parts and the updated part's index, or ``None``.
-    """
     for index, part in enumerate(parts):
         if (
             part.get("toolCallId") == update.tool_call_id
@@ -70,8 +62,6 @@ def tool_result_update(
     override_state: Literal["output-error"] | None = None,
     error_text: str | None = None,
 ) -> ToolPartUpdate:
-    """Return the update for a client tool's result (or its error)."""
-
     def apply(part: Part) -> Part:
         if override_state == "output-error":
             return {
@@ -102,11 +92,6 @@ def cross_message_tool_result_update(
     error_text: str | None = None,
     preliminary: bool | None = None,
 ) -> ToolPartUpdate:
-    """Return the update for a result to a call in an earlier message.
-
-    Settled parts stay as they are.
-    """
-
     def apply(part: Part) -> Part:
         if part.get("state") in SETTLED_TOOL_STATES:
             return part
@@ -133,8 +118,6 @@ def cross_message_tool_result_update(
 def paused_execution_update(
     tool_call_id: str, execution_id: str, output: Any
 ) -> ToolPartUpdate:
-    """Replace a paused execution's placeholder output with its final output."""
-
     def apply(part: Part) -> Part:
         current = part.get("output")
         if (
@@ -151,8 +134,6 @@ def paused_execution_update(
 
 
 def tool_approval_update(tool_call_id: str, approved: bool) -> ToolPartUpdate:
-    """Return the update for the user's answer to an approval request."""
-
     def apply(part: Part) -> Part:
         approval = part.get("approval")
         approval = approval if isinstance(approval, dict) else None
@@ -175,7 +156,6 @@ def tool_approval_update(tool_call_id: str, approved: bool) -> ToolPartUpdate:
 
 
 def tool_part_name(part: Part) -> str | None:
-    """Return a tool part's tool name (``None`` for other parts)."""
     kind = part.get("type")
     if not isinstance(kind, str):
         return None
@@ -190,10 +170,6 @@ def tool_part_name(part: Part) -> str | None:
 def part_awaits_client_interaction(
     part: Any, client_resolvable: frozenset[str] | set[str]
 ) -> bool:
-    """Return whether ``part`` waits on the client.
-
-    That is an approval request, or a client tool's call awaiting its result.
-    """
     if not isinstance(part, dict) or "state" not in part:
         return False
     state = part["state"]
@@ -206,7 +182,6 @@ def part_awaits_client_interaction(
 
 
 def client_resolvable_tool_names(tools: Iterable[Any] | None) -> frozenset[str]:
-    """Return the names of the client's tools (dicts or objects with ``name``)."""
     names = set()
     for tool in tools or ():
         name = (
@@ -218,7 +193,6 @@ def client_resolvable_tool_names(tools: Iterable[Any] | None) -> frozenset[str]:
 
 
 def has_incomplete_tool_batch(messages: Sequence[dict[str, Any]]) -> bool:
-    """Return whether the last assistant message has pending and settled tool calls."""
     leaf = next((m for m in reversed(messages) if m.get("role") == "assistant"), None)
     if leaf is None:
         return False

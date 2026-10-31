@@ -1,9 +1,8 @@
-"""SQL storage for the Tasks capability: the run and step tables.
+"""Port of upstream ``tasks/store.ts``.
 
-Port of upstream ``tasks/store.ts``. The engine in ``tasks.py`` holds the
-state machine; every statement that touches SQLite is here or in
-``engine.py``. Fenced writes use ``RETURNING`` to learn whether the fence
-let them through (``.design/sql_schemas.md`` §5).
+The engine in ``tasks.py`` holds the state machine; every statement that
+touches SQLite is here or in ``engine.py``. Fenced writes use ``RETURNING`` to
+learn whether the fence let them through (``.design/sql_schemas.md`` §5).
 """
 
 import json
@@ -77,34 +76,23 @@ _STEPS = """CREATE TABLE IF NOT EXISTS cf_agents_task_steps (
 
 
 class TaskStore:
-    """Row access for one Tasks capability.
-
-    Parameters
-    ----------
-    sql
-        The object's typed SQL helper.
-    """
-
     __slots__ = ("sql",)
 
     def __init__(self, sql: Sql) -> None:
         self.sql = sql
 
     def ensure_tables(self) -> None:
-        """Create the run and step tables (idempotent)."""
         self.sql(_RUNS)
         self.sql(_RUNS_BY_DEFINITION)
         self.sql(_STEPS)
 
     def get_run(self, run_id: str) -> TaskRunRow | None:
-        """Return one run row, or ``None``."""
         rows = self.sql(
             "SELECT * FROM cf_agents_task_runs WHERE run_id = ?", run_id, row=TaskRunRow
         )
         return rows[0] if rows else None
 
     def get_run_by_key(self, idempotency_key: str) -> TaskRunRow | None:
-        """Return the run with ``idempotency_key``, or ``None``."""
         rows = self.sql(
             "SELECT * FROM cf_agents_task_runs WHERE idempotency_key = ?",
             idempotency_key,
@@ -112,8 +100,7 @@ class TaskStore:
         )
         return rows[0] if rows else None
 
-    def next_at(self, run_id: str) -> int | None:
-        """Return a live run's deadline (epoch ms), or ``None`` once it's settled."""
+    def live_run_deadline_ms(self, run_id: str) -> int | None:
         rows = self.sql(
             """SELECT next_at FROM cf_agents_task_runs
                WHERE run_id = ? AND state IN ('pending', 'waiting', 'running')""",
@@ -122,7 +109,6 @@ class TaskStore:
         return rows[0]["next_at"] if rows else None
 
     def delete_run(self, run_id: str) -> None:
-        """Delete a run and its step journal."""
         self.sql("DELETE FROM cf_agents_task_steps WHERE run_id = ?", run_id)
         self.sql("DELETE FROM cf_agents_task_runs WHERE run_id = ?", run_id)
 
@@ -132,7 +118,6 @@ class TaskStore:
         states: Sequence[TaskRunState],
         limit: int,
     ) -> Sequence[TaskRunRow]:
-        """Return runs newest first, optionally by definition and states."""
         return self.sql(
             """SELECT * FROM cf_agents_task_runs
                WHERE (? IS NULL OR definition = ?)
@@ -150,7 +135,6 @@ class TaskStore:
     def settled_runs(
         self, states: Sequence[TaskRunState], settled_before_ms: int | None, limit: int
     ) -> Sequence[TaskRunRow]:
-        """Return settled runs in ``states``, oldest settled first."""
         return self.sql(
             """SELECT * FROM cf_agents_task_runs
                WHERE state IN (SELECT value FROM json_each(?))
@@ -165,7 +149,6 @@ class TaskStore:
         )
 
     def live_runs_with_deadlines(self) -> Sequence[str]:
-        """Return the ids of non-terminal runs that have a deadline."""
         rows = self.sql(
             """SELECT run_id FROM cf_agents_task_runs
                WHERE state IN ('pending', 'waiting', 'running')
@@ -175,7 +158,6 @@ class TaskStore:
 
 
 def row_to_run(row: TaskRunRow) -> TaskRun[object]:
-    """Return the snapshot of a run row (one class per state)."""
     metadata = json.loads(row["metadata"]) if row["metadata"] is not None else None
     created_at = from_epoch_ms(row["created_at"])
     settled_at = from_epoch_ms(row["settled_at"] or row["updated_at"])

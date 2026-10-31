@@ -1,7 +1,6 @@
-"""Server ids and the private-address check on server URLs.
+"""Ports of upstream ``normalizeServerId`` and ``isBlockedUrl``.
 
-Ports of upstream ``normalizeServerId`` and ``isBlockedUrl``
-(``client/index.ts:119-262``).
+See ``client/index.ts:119-262``.
 """
 
 import ipaddress
@@ -52,12 +51,6 @@ def normalize_server_id(value: str) -> str:
 
 
 def is_blocked_url(url: str) -> bool:
-    """Return whether ``url`` is malformed or points at a private address.
-
-    Blocks RFC 1918, link-local, unique-local and unspecified addresses
-    (including IPv4-mapped IPv6 forms) and cloud metadata hosts. Loopback is
-    allowed.
-    """
     if "\\" in url:  # fetch() reads a backslash as "/", urlsplit doesn't
         return True
     try:

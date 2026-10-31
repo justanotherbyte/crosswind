@@ -1,10 +1,8 @@
-"""Converting chat models to and from their wire form (``.design/chat_engine.md`` §4.2).
+"""Wire-form conversion, per ``.design/chat_engine.md`` §4.2.
 
-The SDK's chat machinery works on wire-form dictionaries (camelCase, as
-stored and sent); the typed chunks and messages are the public API,
-converted here. Optional fields that are ``None`` (or a ``False`` flag) are
-left out; required fields are always written. A part that doesn't decode
-cleanly becomes `UnknownPart` and is written back exactly as it was.
+The chat machinery works on camelCase wire-form dictionaries, as stored and
+sent. Only the public API uses the typed chunks and messages. A part that
+doesn't decode becomes `UnknownPart` so it is written back exactly as it was.
 """
 
 import dataclasses
@@ -47,7 +45,6 @@ __all__ = (
 )
 
 type WireMessage = dict[str, Any]
-"""A message in wire form: what Sessions stores and clients send."""
 
 _PARTS: dict[str, type] = {
     cls.type: cls
@@ -105,7 +102,6 @@ def _fields(cls: Any) -> tuple[_Field, ...]:
 
 
 def chunk_to_wire(chunk: UIMessageChunk) -> dict[str, Any]:
-    """Return a chunk's wire form (``type`` first, as the AI SDK writes it)."""
     if isinstance(chunk, Data):
         out: dict[str, Any] = {"type": f"data-{chunk.name}"}
         if chunk.id is not None:
@@ -114,11 +110,11 @@ def chunk_to_wire(chunk: UIMessageChunk) -> dict[str, Any]:
         if chunk.transient:
             out["transient"] = True
         return out
+    # ``type`` goes first, as the AI SDK writes it.
     return {"type": chunk.type, **_record_to_wire(chunk)}
 
 
 def part_to_wire(part: UIMessagePart) -> dict[str, Any]:
-    """Return a part's wire form."""
     match part:
         case UnknownPart():
             return dict(part.fields)
@@ -142,7 +138,6 @@ def part_to_wire(part: UIMessagePart) -> dict[str, Any]:
 
 
 def message_to_wire(message: UIMessage) -> WireMessage:
-    """Return a message's wire form."""
     out: WireMessage = {
         "id": message.id,
         "role": message.role,
@@ -168,13 +163,6 @@ def _record_to_wire(record: Any, skip: frozenset[str] = frozenset()) -> dict[str
 
 
 def message_from_wire(message: Mapping[str, Any]) -> UIMessage:
-    """Return the typed form of a wire message (its parts never fail to decode).
-
-    Raises
-    ------
-    KeyError
-        If the message has no ``id``, ``role``, or ``parts``.
-    """
     return UIMessage(
         id=message["id"],
         role=message["role"],
@@ -184,7 +172,6 @@ def message_from_wire(message: Mapping[str, Any]) -> UIMessage:
 
 
 def part_from_wire(part: Mapping[str, Any]) -> UIMessagePart:
-    """Return the typed form of a wire part, or `UnknownPart` if it doesn't fit."""
     try:
         return _decode_part(part)
     except (KeyError, TypeError, ValueError):

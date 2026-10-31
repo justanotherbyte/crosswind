@@ -55,7 +55,10 @@ select = [
     "ANN",              # annotations everywhere
     "D",                # docstrings
 ]
-ignore = ["ANN401"]     # Any is allowed where decided (code_semantics.md §3)
+ignore = [
+    "ANN401",  # Any is allowed where decided (code_semantics.md §3)
+    "D1",      # only the rendered public API carries docstrings; tests/test_public_api.py checks them
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

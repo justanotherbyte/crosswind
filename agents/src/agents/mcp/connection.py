@@ -1,7 +1,6 @@
-"""One server's connection: the state machine, the catalog and the listener.
+"""Port of upstream ``client/connection.ts`` on top of `McpSession`.
 
-Port of upstream ``client/connection.ts`` (``MCPClientConnection``) on top of
-`McpSession` (``.design/mcp_engine.md`` §5).
+See ``.design/mcp_engine.md`` §5.
 """
 
 import asyncio

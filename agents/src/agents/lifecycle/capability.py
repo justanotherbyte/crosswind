@@ -1,7 +1,6 @@
-"""The base class every Lifecycle capability extends.
+"""Port of upstream ``lifecycle/capability.ts`` and ``capability-runner.ts``.
 
-Port of upstream ``lifecycle/capability.ts`` and the hook contract in
-``capability-runner.ts``. Upstream's two layers (the ``DurableObjectCapability``
+Upstream's two layers (the ``DurableObjectCapability``
 interface and the ``LifecycleCapability`` base) are merged into one base class
 with typed no-op hooks; a hook counts as implemented only when a subclass
 overrides it (``.design/lifecycle_capabilities.md`` §9.1).
@@ -24,8 +23,8 @@ if TYPE_CHECKING:
 
 __all__ = ("CATCH_ALL_HOOKS", "LifecycleCapability", "implements")
 
+# At most one catch-all capability may implement each of these hooks.
 CATCH_ALL_HOOKS = ("on_request", "on_websocket_upgrade")
-"""The hooks a catch-all capability can claim; at most one catch-all each."""
 
 
 class LifecycleCapability:
@@ -124,9 +123,4 @@ class LifecycleCapability:
 
 
 def implements(capability: LifecycleCapability, hook: str) -> bool:
-    """Return whether ``capability``'s class overrides ``hook``.
-
-    Lifecycle dispatches only to overridden hooks, and uses this for the
-    catch-all uniqueness check.
-    """
     return getattr(type(capability), hook) is not getattr(LifecycleCapability, hook)

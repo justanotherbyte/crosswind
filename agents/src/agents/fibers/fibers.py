@@ -1,16 +1,15 @@
-"""Durable execution with checkpoints and a recovery hook: the Fibers capability.
+"""Port of upstream's "legacy fibers" engine.
 
-Port of upstream's "legacy fibers" engine (``index.ts``: ``runFiber``,
-``startFiber`` and the managed-fiber ledger, ``_checkRunFibers``) and the
-facet-run index in ``dynamic-agents.ts`` (``.design/fibers_api.md`` §4,
-``.design/fibers_engine.md``).
+Ports ``runFiber``, ``startFiber``, the managed-fiber ledger and
+``_checkRunFibers`` from ``index.ts``, and the facet-run index from ``dynamic-
+agents.ts`` (``.design/fibers_api.md`` §4, ``.design/fibers_engine.md``).
 
 A running fiber has a ``cf_agents_runs`` row; a row still there on a later
 wake, and not running in this isolate, means the isolate died mid-fiber, and
 the recovery scan hands its last checkpoint to the recovery hook. Managed
 fibers also keep a ``cf_agents_fibers`` record that outlives the run. A facet
-has no alarm, so the root indexes its fibers and calls back into it to
-recover them.
+has no alarm, so the root indexes its fibers and calls back into it to recover
+them.
 """
 
 import asyncio
@@ -74,13 +73,6 @@ _current: ContextVar[FiberContext | None] = ContextVar("agents_fiber", default=N
 
 
 def stash(data: Any) -> None:
-    """Checkpoint the current fiber (replacing its previous snapshot).
-
-    Raises
-    ------
-    RuntimeError
-        If called outside a fiber.
-    """
     context = _current.get()
     if context is None:
         raise RuntimeError("stash() called outside a fiber")
@@ -90,7 +82,6 @@ def stash(data: Any) -> None:
 async def with_fiber_stash[T](
     context: FiberContext, fn: Callable[[], Awaitable[T]]
 ) -> T:
-    """Run ``fn`` with ``stash()`` writing through ``context`` (for chat turns)."""
     token = _current.set(context)
     try:
         return await fn()
@@ -255,7 +246,7 @@ class Fibers(LifecycleCapability):
         row = self._store.get(fiber_id)
         if row is None or row["status"] not in LIVE:
             return False
-        self._store.settle(fiber_id, "aborted", reason, when=LIVE)
+        self._store.settle(fiber_id, "aborted", reason, if_status_in=LIVE)
         execution = self._executions.get(fiber_id)
         if execution is not None:
             execution.cancel(reason)
@@ -327,7 +318,7 @@ class Fibers(LifecycleCapability):
                             id,
                             row["outcome"],
                             row["error_message"],
-                            when=LIVE,
+                            if_status_in=LIVE,
                             completed_at=row["completed_at"],
                         )
                     store.delete_run(id)
@@ -455,7 +446,6 @@ class Fibers(LifecycleCapability):
         raise ValueError(f"Unknown routed fiber message {message!r}")
 
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Forget the root's index entries for a deleted facet subtree (internal)."""
         self._store.forget_facets_under(prefix)
         await self._sync_housekeeping()
 
@@ -603,7 +593,7 @@ class Fibers(LifecycleCapability):
 
     def _settle_execution(self, fiber_id: str, outcome: _Outcome) -> None:
         status, error = outcome
-        self._store.settle(fiber_id, status, error, when=("running",))
+        self._store.settle(fiber_id, status, error, if_status_in=("running",))
         self._notify(fiber_id)
 
     def _apply_result(self, fiber_id: str, result: FiberRecoveryResult) -> None:
@@ -614,7 +604,7 @@ class Fibers(LifecycleCapability):
                     fiber_id,
                     "completed",
                     None,
-                    when=("interrupted",),
+                    if_status_in=("interrupted",),
                     snapshot=snapshot,
                     metadata=result.metadata,
                 )
@@ -623,7 +613,7 @@ class Fibers(LifecycleCapability):
                     fiber_id,
                     "error",
                     result.error,
-                    when=("interrupted",),
+                    if_status_in=("interrupted",),
                     snapshot=snapshot,
                 )
             case FiberAborted():
@@ -631,7 +621,7 @@ class Fibers(LifecycleCapability):
                     fiber_id,
                     "aborted",
                     result.reason,
-                    when=("interrupted",),
+                    if_status_in=("interrupted",),
                     snapshot=snapshot,
                 )
             case FiberInterrupted():
@@ -639,7 +629,7 @@ class Fibers(LifecycleCapability):
                     fiber_id,
                     "interrupted",
                     result.reason,
-                    when=("interrupted",),
+                    if_status_in=("interrupted",),
                     snapshot=snapshot,
                 )
         self._notify(fiber_id)
@@ -695,7 +685,7 @@ class Fibers(LifecycleCapability):
             )
             if is_managed:
                 self._store.settle(
-                    context.id, "error", _message(error), when=("interrupted",)
+                    context.id, "error", _message(error), if_status_in=("interrupted",)
                 )
                 self._notify(context.id)
             self._emit(

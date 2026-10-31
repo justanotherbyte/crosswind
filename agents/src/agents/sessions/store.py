@@ -1,23 +1,22 @@
-"""SQL storage for Sessions: message rows and their continuation slices.
+"""Port of the phase-1 statements in upstream ``sessions/core.ts``.
 
-Port of the phase-1 statements in upstream ``sessions/core.ts``
-(``.design/sessions_engine.md``, ``.design/sql_schemas.md`` §7). Both tables
-are ``WITHOUT ROWID`` with no secondary indexes: on DO SQLite a row write
-costs far more than a read, and every index would charge every append.
+See ``.design/sessions_engine.md`` and ``.design/sql_schemas.md`` §7. Both
+tables are ``WITHOUT ROWID`` with no secondary indexes: on DO SQLite a row
+write costs far more than a read, and every index would charge every append.
 """
 
 import json
 from collections.abc import Sequence
-from typing import Any, NamedTuple
+from typing import NamedTuple, TypedDict
 
 from ..core.sql import Sql
 from ..core.timing import now_ms
 
 __all__ = ("MAX_PATH_DEPTH", "PathRow", "SessionStore")
 
+# Older rows read as truncated. The queries below repeat the number, as SQL text
+# must be literal.
 MAX_PATH_DEPTH = 10_000
-"""The most rows a path walk visits; older rows read as truncated (the
-queries below spell it out, as SQL text must be literal)."""
 
 _MESSAGES = """CREATE TABLE IF NOT EXISTS cf_agents_session_messages (
   session_id TEXT NOT NULL,
@@ -93,8 +92,6 @@ WHERE session_id = ? AND id IN (SELECT child_id FROM nearest)"""
 
 
 class PathRow(NamedTuple):
-    """One message on a path, without its content."""
-
     id: str
     role: str
     bytes: int
@@ -102,27 +99,28 @@ class PathRow(NamedTuple):
 
 
 class Tail(NamedTuple):
-    """The newest row's id and the next ``seq``."""
-
     leaf_id: str | None
     next_seq: int
 
 
-class SessionStore:
-    """Every SQL statement Sessions runs. Writes run inside callers' transactions."""
+class _KeyColumns(TypedDict):
+    content_chunks: int
+    token_estimate: int
+    content_hash: str | None
 
+
+# Writes run inside the callers' transactions.
+class SessionStore:
     __slots__ = ("sql",)
 
     def __init__(self, sql: Sql) -> None:
         self.sql = sql
 
     def ensure_tables(self) -> None:
-        """Create both tables (idempotent)."""
         self.sql(_MESSAGES)
         self.sql(_CHUNKS)
 
     def exists(self, session_id: str, id: str) -> bool:
-        """Return whether the session has a message with ``id`` (key-only probe)."""
         return bool(
             self.sql(
                 "SELECT id FROM cf_agents_session_messages"
@@ -133,7 +131,6 @@ class SessionStore:
         )
 
     def content(self, session_id: str, id: str) -> str | None:
-        """Return one message's full JSON text."""
         rows = self.sql(
             "SELECT content, content_chunks FROM cf_agents_session_messages"
             " WHERE session_id = ? AND id = ?",
@@ -147,18 +144,17 @@ class SessionStore:
             return row["content"]
         return row["content"] + self.continuations(session_id, [id]).get(id, "")
 
-    def key_columns(self, session_id: str, id: str) -> dict[str, Any] | None:
-        """Return a row's ``content_chunks``, ``token_estimate``, ``content_hash``."""
+    def key_columns(self, session_id: str, id: str) -> _KeyColumns | None:
         rows = self.sql(
             "SELECT content_chunks, token_estimate, content_hash"
             " FROM cf_agents_session_messages WHERE session_id = ? AND id = ?",
             session_id,
             id,
+            row=_KeyColumns,
         )
         return rows[0] if rows else None
 
     def has_parent(self, session_id: str, id: str) -> bool:
-        """Return whether the row has a parent."""
         rows = self.sql(
             "SELECT parent_id FROM cf_agents_session_messages"
             " WHERE session_id = ? AND id = ?",
@@ -167,8 +163,8 @@ class SessionStore:
         )
         return bool(rows) and rows[0]["parent_id"] is not None
 
+    # In a linear session the newest row is the leaf.
     def tail(self, session_id: str) -> Tail:
-        """Read the newest row (the leaf of a linear session)."""
         rows = self.sql(
             "SELECT id, seq FROM cf_agents_session_messages WHERE session_id = ?"
             " ORDER BY seq DESC LIMIT 1",
@@ -179,7 +175,6 @@ class SessionStore:
         return Tail(leaf_id=rows[0]["id"], next_seq=rows[0]["seq"] + 1)
 
     def path(self, session_id: str, leaf_id: str) -> list[PathRow]:
-        """Return the path from the root to ``leaf_id``, without content."""
         rows = self.sql(_PATH, session_id, leaf_id, session_id, session_id)
         return [
             PathRow(row["id"], row["role"], row["bytes"], row["token_estimate"])
@@ -187,7 +182,6 @@ class SessionStore:
         ]
 
     def contents(self, session_id: str, ids: Sequence[str]) -> dict[str, str]:
-        """Return the full JSON text of each message in ``ids`` that exists."""
         if not ids:
             return {}
         rows = self.sql(
@@ -207,7 +201,6 @@ class SessionStore:
         }
 
     def continuations(self, session_id: str, ids: Sequence[str]) -> dict[str, str]:
-        """Return the joined continuation slices of each message in ``ids``."""
         if not ids:
             return {}
         rows = self.sql(
@@ -234,7 +227,6 @@ class SessionStore:
         token_estimate: int,
         content_hash: str,
     ) -> None:
-        """Insert a message row and its continuation slices."""
         self.sql(
             "INSERT INTO cf_agents_session_messages (session_id, id, seq,"
             " parent_id, role, content, content_chunks, token_estimate,"
@@ -263,7 +255,6 @@ class SessionStore:
         content_hash: str,
         old_chunks: int,
     ) -> None:
-        """Replace a message's content, dropping continuations it no longer has."""
         self.sql(
             "UPDATE cf_agents_session_messages SET role = ?, content = ?,"
             " content_chunks = ?, token_estimate = ?, content_hash = ?"
@@ -287,7 +278,6 @@ class SessionStore:
         self._write_continuations(session_id, id, slices)
 
     def delete(self, session_id: str, ids: Sequence[str]) -> None:
-        """Delete messages, first rewiring their children to surviving ancestors."""
         encoded = json.dumps(list(ids))
         self.sql(_REWIRE, encoded, session_id, session_id, session_id)
         self.sql(
@@ -304,7 +294,6 @@ class SessionStore:
         )
 
     def clear(self, session_id: str) -> None:
-        """Delete every message in the session."""
         self.sql(
             "DELETE FROM cf_agents_session_messages WHERE session_id = ?", session_id
         )

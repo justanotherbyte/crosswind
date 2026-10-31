@@ -1,12 +1,12 @@
-"""Keep an object in memory while work runs: the KeepAlive capability.
+"""Port of upstream ``keepAlive`` (``index.ts``).
 
-Port of upstream ``keepAlive`` (``index.ts``) and the facet leases in
-``dynamic-agents.ts`` (``.design/fibers_engine.md``). While any lease is held,
-a ``keep-alive`` job stays in the Lifecycle queue, due every interval, so the
-alarm keeps waking the object before idle eviction. A facet has no alarm: it
-takes its lease from the root over the route transport, and the root drops a
-facet's leases when it's deleted or starts in a new isolate (the old isolate
-can't release them; ``.design/fibers_engine.md`` §6).
+Also ports the facet leases in ``dynamic-agents.ts``
+(``.design/fibers_engine.md``). While any lease is held, a ``keep-alive`` job
+stays in the Lifecycle queue, due every interval, so the alarm keeps waking the
+object before idle eviction. A facet has no alarm: it takes its lease from the
+root over the route transport, and the root drops a facet's leases when it's
+deleted or starts in a new isolate (the old isolate can't release them;
+``.design/fibers_engine.md`` §6).
 """
 
 import asyncio
@@ -31,10 +31,8 @@ _JOB_ID = "keep-alive"
 
 
 class _FacetLease(NamedTuple):
-    owner: str
-    """The route key of the facet holding the lease."""
-    isolate: str
-    """The facet isolate that took it."""
+    facet_key: str
+    facet_isolate: str
 
 
 class KeepAlive(LifecycleCapability):
@@ -128,7 +126,8 @@ class KeepAlive(LifecycleCapability):
                     # isolates of their own.
                     self._drop_leases(
                         lambda lease: (
-                            lease.owner == owner and lease.isolate != message["isolate"]
+                            lease.facet_key == owner
+                            and lease.facet_isolate != message["isolate"]
                         )
                     )
                     return True
@@ -144,14 +143,13 @@ class KeepAlive(LifecycleCapability):
         self._refs = 0
         self._facet_leases.clear()
 
+    # Deleting a facet ends its isolate, so the work holding those leases can't
+    # release them itself (upstream keeps them; fibers_engine.md §6).
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Drop the leases of a deleted facet subtree (internal).
-
-        Deleting a facet ends its isolate, so the work holding those leases
-        can't release them itself (upstream keeps them; fibers_engine.md §6).
-        """
         self._drop_leases(
-            lambda lease: lease.owner == prefix or lease.owner.startswith(f"{prefix}/")
+            lambda lease: (
+                lease.facet_key == prefix or lease.facet_key.startswith(f"{prefix}/")
+            )
         )
 
     def _drop_leases(self, matches: Callable[[_FacetLease], bool]) -> None:

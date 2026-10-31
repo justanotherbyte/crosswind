@@ -1,9 +1,7 @@
-"""The base exception, and exceptions raised by ``core`` helpers.
+"""Misuse raises built-in exceptions, not `AgentsException` subclasses.
 
-Every exception the SDK raises on purpose subclasses `AgentsException`, so
-``except AgentsException`` catches all of them. Misuse (a wrong argument type,
-a call at the wrong time) raises built-in ``TypeError`` / ``ValueError`` /
-``RuntimeError`` instead (``.design/utilities.md`` §1).
+A wrong argument type or value, or a call at the wrong time, raises
+``TypeError`` / ``ValueError`` / ``RuntimeError`` (``.design/utilities.md`` §1).
 """
 
 __all__ = ("AgentsException", "SqlError")

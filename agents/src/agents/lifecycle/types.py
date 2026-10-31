@@ -1,5 +1,3 @@
-"""Types for the Lifecycle and the capabilities installed into it."""
-
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,8 +32,8 @@ __all__ = (
     "WebSocket",
 )
 
+# The JS WebSocket object the hibernation API delivers; it has no Python type.
 type WebSocket = Any
-"""The runtime's (JS) WebSocket object, as the hibernation API delivers it."""
 
 type LifecycleStatus = Literal["zero", "starting", "started"]
 """``"zero"`` before startup, ``"starting"`` while it runs, ``"started"`` after."""
@@ -94,9 +92,8 @@ class LifecycleJob:
     created_at: datetime
 
 
+# Mirrors the cf_agents_jobs table (.design/sql_schemas.md §2).
 class JobRow(TypedDict):
-    """A raw ``cf_agents_jobs`` row (``.design/sql_schemas.md`` §2)."""
-
     id: str
     capability: str
     fn: str
@@ -177,8 +174,6 @@ class RouteContext:
 
 @dataclass(slots=True, kw_only=True)
 class RouteEnvelope:
-    """A routed message between Lifecycles, addressed to a capability id."""
-
     capability: str
     source: RouteAddress | None
     payload: Any
@@ -194,95 +189,61 @@ class LifecycleEvent:
 
 
 type EventSink = Callable[[LifecycleEvent], Awaitable[None] | None]
-"""Receives every Lifecycle event once startup has finished."""
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class HostContext:
-    """The host an invocation runs for, and what it runs on behalf of.
-
-    Frozen: one value is shared by every task that inherits the context.
-    """
-
+    # Frozen: every task that inherits the context shares one value.
     host: object
     connection: Connection | None = None
     request: "Request | None" = None
 
 
 class HostInvoker(Protocol):
-    """Wraps user callbacks run through ``run_in_host_context`` (e.g. ``Agent``)."""
-
     async def __call__[T](
         self,
         fn: Callable[[], Awaitable[T]],
         *,
         connection: Connection | None,
         request: "Request | None",
-    ) -> T:
-        """Run ``fn`` inside the host's invocation boundary."""
-        ...
+    ) -> T: ...
 
 
 class RouteTransport(Protocol):
-    """Carries routed messages between Lifecycles (e.g. a facet and its root)."""
-
     @property
-    def source(self) -> RouteAddress | None:
-        """Return this Lifecycle's address, or ``None`` at the root."""
-        ...
+    def source(self) -> RouteAddress | None: ...
 
-    async def to_root(self, envelope: RouteEnvelope) -> Any:
-        """Deliver ``envelope`` to the root Lifecycle."""
-        ...
+    async def to_root(self, envelope: RouteEnvelope) -> Any: ...
 
-    async def to(self, target: RouteAddress, envelope: RouteEnvelope) -> Any:
-        """Deliver ``envelope`` to the Lifecycle at ``target``."""
-        ...
+    async def to(self, target: RouteAddress, envelope: RouteEnvelope) -> Any: ...
 
 
 @dataclass(slots=True, kw_only=True)
 class JobDispatch:
-    """The hooks one job owner exposes to the job driver."""
-
     on_job: Callable[[JobContext], Awaitable[JobOutcome]]
     on_job_error: Callable[[JobContext, Exception], Awaitable[JobOutcome]] | None = None
 
 
+# The Workers SDK wrapper of ctx.storage, not the raw JS object.
 class DriverStorage(Protocol):
-    """The slice of ``ctx.storage`` (the Workers SDK wrapper) the job driver uses."""
+    async def get(self, key: str) -> Any: ...
 
-    async def get(self, key: str) -> Any:
-        """Read a KV value."""
-        ...
+    async def put(self, key: str, value: Any) -> None: ...
 
-    async def put(self, key: str, value: Any) -> None:
-        """Write a KV value."""
-        ...
+    async def delete(self, key: str) -> Any: ...
 
-    async def delete(self, key: str) -> Any:
-        """Delete a KV value."""
-        ...
+    async def setAlarm(self, time_ms: int) -> None: ...  # noqa: N802  (JS name)
 
-    async def setAlarm(self, time: int) -> None:  # noqa: N802  (JS name)
-        """Set the physical alarm (epoch ms)."""
-        ...
-
-    async def sync(self) -> None:
-        """Wait until pending writes are durable."""
-        ...
+    async def sync(self) -> None: ...
 
 
 @dataclass(slots=True, frozen=True)
 class AlarmScope:
-    """The job an async flow belongs to while an alarm drives it."""
-
     executing: JobRow | None
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class MemoryLimitStrike:
-    """One recorded memory-limit strike, shared by every flow that saw it."""
-
     strikes: int
     limit: int
     sealed: bool

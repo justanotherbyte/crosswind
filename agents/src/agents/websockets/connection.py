@@ -1,6 +1,5 @@
-"""A client's WebSocket connection, backed by a hibernatable socket.
+"""Port of upstream ``websockets/connection.ts`` and ``connection-flags.ts``.
 
-Port of upstream ``websockets/connection.ts`` and ``connection-flags.ts``.
 Everything the SDK knows about a connection lives in its socket's
 hibernation attachment, so it survives the object leaving memory
 (``.design/agent_api.md`` §1.9). Wrappers are cheap and recreated on each
@@ -45,7 +44,6 @@ class Connection(Generic[ConnState]):
 
     @classmethod
     def _from_socket(cls, ws: WebSocket) -> Self | None:
-        """Wrap a socket the SDK accepted; ``None`` for anyone else's socket."""
         attachment = _ffi.read_attachment(ws)
         if not isinstance(attachment, dict):
             return None
@@ -112,7 +110,6 @@ class Connection(Generic[ConnState]):
         return self._attachment().get("__flags", {}).get(key)
 
     def _set_flag(self, key: str, value: Any) -> None:
-        """Set an internal flag; ``None`` removes it."""
         attachment = self._attachment()
         flags = attachment.get("__flags", {})
         if value is None:

@@ -1,7 +1,6 @@
-"""SQL storage for fibers: run rows, the managed ledger, and the facet index.
+"""Port of the fiber SQL in upstream ``index.ts`` and ``dynamic-agents.ts``.
 
-Port of the fiber statements in upstream ``index.ts`` and the facet-run index
-in ``dynamic-agents.ts`` (``.design/sql_schemas.md`` §11.2, §12).
+The schemas are in ``.design/sql_schemas.md`` §11.2 and §12.
 """
 
 import json
@@ -62,15 +61,12 @@ TERMINAL: tuple[FiberStatus, ...] = ("completed", "aborted", "interrupted", "err
 
 
 class FiberStore:
-    """Every SQL statement the fiber engine runs."""
-
     __slots__ = ("sql",)
 
     def __init__(self, sql: Sql) -> None:
         self.sql = sql
 
     def ensure_tables(self) -> None:
-        """Create the three tables and their indexes (idempotent)."""
         for statement in (
             _RUNS,
             _FIBERS,
@@ -83,7 +79,6 @@ class FiberStore:
             self.sql(statement)
 
     def insert_run(self, id: str, name: str) -> None:
-        """Insert the row of a fiber starting now."""
         self.sql(
             "INSERT INTO cf_agents_runs (id, name, snapshot, created_at)"
             " VALUES (?, ?, NULL, ?)",
@@ -93,7 +88,6 @@ class FiberStore:
         )
 
     def write_snapshot(self, id: str, snapshot: str, *, managed: bool) -> None:
-        """Save a checkpoint (on the ledger record too, for a managed fiber)."""
         self.sql("UPDATE cf_agents_runs SET snapshot = ? WHERE id = ?", snapshot, id)
         if managed:
             self.sql(
@@ -103,7 +97,6 @@ class FiberStore:
             )
 
     def record_outcome(self, id: str, outcome: str, error: str | None) -> None:
-        """Record how a fiber's body ended, before its row is deleted."""
         self.sql(
             "UPDATE cf_agents_runs SET completed_at = ?, outcome = ?,"
             " error_message = ? WHERE id = ?",
@@ -114,11 +107,9 @@ class FiberStore:
         )
 
     def delete_run(self, id: str) -> None:
-        """Delete a fiber's run row."""
         self.sql("DELETE FROM cf_agents_runs WHERE id = ?", id)
 
     def runs(self) -> Sequence[FiberRunRow]:
-        """Return every run row."""
         return self.sql(
             "SELECT id, name, snapshot, created_at, completed_at, outcome,"
             " error_message FROM cf_agents_runs",
@@ -126,15 +117,12 @@ class FiberStore:
         )
 
     def run_ids(self) -> Sequence[str]:
-        """Return the ids of every run row."""
         return [row["id"] for row in self.sql("SELECT id FROM cf_agents_runs")]
 
     def count_runs(self) -> int:
-        """Return how many run rows there are."""
         return self.sql("SELECT COUNT(*) AS count FROM cf_agents_runs")[0]["count"]
 
     def get(self, fiber_id: str) -> FiberLedgerRow | None:
-        """Return a ledger record by id."""
         rows = self.sql(
             "SELECT " + _LEDGER_COLUMNS + " FROM cf_agents_fibers"
             " WHERE fiber_id = ? LIMIT 1",
@@ -144,7 +132,6 @@ class FiberStore:
         return rows[0] if rows else None
 
     def get_by_key(self, idempotency_key: str) -> FiberLedgerRow | None:
-        """Return a ledger record by idempotency key."""
         rows = self.sql(
             "SELECT " + _LEDGER_COLUMNS + " FROM cf_agents_fibers"
             " WHERE idempotency_key = ? LIMIT 1",
@@ -160,7 +147,6 @@ class FiberStore:
         idempotency_key: str | None,
         metadata: dict[str, Any] | None,
     ) -> None:
-        """Insert a ``pending`` ledger record."""
         self.sql(
             "INSERT INTO cf_agents_fibers (fiber_id, idempotency_key, name, status,"
             " metadata_json, created_at) VALUES (?, ?, ?, 'pending', ?, ?)",
@@ -172,7 +158,6 @@ class FiberStore:
         )
 
     def mark_running(self, fiber_id: str) -> bool:
-        """Move ``pending`` to ``running``; ``False`` if it wasn't pending."""
         return bool(
             self.sql(
                 "UPDATE cf_agents_fibers SET status = 'running', started_at = ?"
@@ -188,15 +173,11 @@ class FiberStore:
         status: FiberStatus,
         error: str | None,
         *,
-        when: tuple[FiberStatus, ...],
+        if_status_in: tuple[FiberStatus, ...],
         completed_at: int | None = None,
         snapshot: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Set a terminal (or ``interrupted``) status if the record is in ``when``.
-
-        ``snapshot`` and ``metadata`` replace the stored ones when given.
-        """
         self.sql(
             "UPDATE cf_agents_fibers SET status = ?, error_message = ?,"
             " completed_at = ?, snapshot = COALESCE(?, snapshot),"
@@ -208,15 +189,14 @@ class FiberStore:
             snapshot,
             json.dumps(metadata) if metadata is not None else None,
             fiber_id,
-            json.dumps(when),
+            json.dumps(if_status_in),
         )
 
     def interrupt(self, fiber_id: str, snapshot: str | None) -> None:
-        """Mark a live record ``interrupted``, keeping the run's last snapshot."""
-        self.settle(fiber_id, "interrupted", None, when=LIVE, snapshot=snapshot)
+        self.settle(fiber_id, "interrupted", None, if_status_in=LIVE, snapshot=snapshot)
 
+    # A live record with no run row means its isolate died before the run started.
     def orphaned_records(self) -> Sequence[FiberLedgerRow]:
-        """Live records with no run row: their isolate died before running."""
         return self.sql(
             "SELECT f.fiber_id, f.idempotency_key, f.name, f.status, f.snapshot,"
             " f.metadata_json, f.error_message, f.created_at, f.started_at,"
@@ -229,7 +209,6 @@ class FiberStore:
     def list(
         self, statuses: Sequence[FiberStatus] | None, name: str | None, limit: int
     ) -> Sequence[FiberLedgerRow]:
-        """Return ledger records, newest first, optionally filtered."""
         encoded = json.dumps(list(statuses)) if statuses is not None else None
         return self.sql(
             "SELECT " + _LEDGER_COLUMNS + " FROM cf_agents_fibers"
@@ -250,7 +229,6 @@ class FiberStore:
         settled_before_ms: int | None,
         limit: int,
     ) -> int:
-        """Delete up to ``limit`` terminal records, oldest settled first."""
         rows = self.sql(
             "SELECT fiber_id FROM cf_agents_fibers"
             " WHERE status IN (SELECT value FROM json_each(?))"
@@ -270,7 +248,6 @@ class FiberStore:
         return len(rows)
 
     def register_facet_run(self, owner_key: str, owner_data: str, run_id: str) -> None:
-        """Index a facet's running fiber on the root."""
         self.sql(
             "INSERT OR REPLACE INTO cf_agents_facet_runs"
             " (owner_path, owner_path_key, run_id, created_at) VALUES (?, ?, ?, ?)",
@@ -281,7 +258,6 @@ class FiberStore:
         )
 
     def unregister_facet_run(self, owner_key: str, run_id: str) -> None:
-        """Remove one facet fiber from the root's index."""
         self.sql(
             "DELETE FROM cf_agents_facet_runs WHERE owner_path_key = ? AND run_id = ?",
             owner_key,
@@ -289,7 +265,6 @@ class FiberStore:
         )
 
     def facet_owners(self) -> Sequence[tuple[str, str]]:
-        """Each indexed facet once, as ``(key, data)``, oldest run first."""
         rows = self.sql(
             "SELECT owner_path_key, owner_path, MIN(created_at) AS first"
             " FROM cf_agents_facet_runs GROUP BY owner_path_key ORDER BY first"
@@ -297,11 +272,9 @@ class FiberStore:
         return [(row["owner_path_key"], row["owner_path"]) for row in rows]
 
     def forget_facet(self, owner_key: str) -> None:
-        """Remove every index entry of one facet."""
         self.sql("DELETE FROM cf_agents_facet_runs WHERE owner_path_key = ?", owner_key)
 
     def forget_facets_under(self, prefix: str) -> None:
-        """Remove the index entries of a facet subtree."""
         self.sql(
             "DELETE FROM cf_agents_facet_runs"
             " WHERE owner_path_key = ? OR substr(owner_path_key, 1, ?) = ?",
@@ -311,12 +284,10 @@ class FiberStore:
         )
 
     def has_facet_runs(self) -> bool:
-        """Return whether any facet fiber is indexed."""
         return bool(self.sql("SELECT 1 FROM cf_agents_facet_runs LIMIT 1"))
 
 
 def inspection_from_row(row: FiberLedgerRow) -> FiberInspection:
-    """Build the public view of a ledger row."""
     return FiberInspection(
         fiber_id=row["fiber_id"],
         name=row["name"],
@@ -332,7 +303,6 @@ def inspection_from_row(row: FiberLedgerRow) -> FiberInspection:
 
 
 def metadata_from_json(text: str | None) -> dict[str, Any] | None:
-    """Parse a ledger row's ``metadata_json``; ``None`` unless it's an object."""
     if text is None:
         return None
     value = json.loads(text)
