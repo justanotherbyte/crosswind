@@ -1,9 +1,4 @@
-"""Hosting an MCP server on a Worker.
-
-Port of upstream ``handler-stateless.ts`` (``createMcpHandler``): each
-request is served on its own by a stateless ``StreamableHTTPSessionManager``,
-behind route, Host / Origin and CORS handling.
-"""
+"""Port of upstream ``handler-stateless.ts`` (``createMcpHandler``)."""
 
 import json
 import logging
@@ -18,7 +13,7 @@ from workers import Request, Response
 
 from ... import _ffi
 from . import asgi
-from .auth_context import auth_context as use_auth_context
+from .auth_context import use_auth_context
 from .errors import MCPServerConfigError
 from .types import CORSOptions, McpAuthContext
 
@@ -215,7 +210,7 @@ class McpHandler:
             return None
 
         host = request.headers.get("host")
-        if host is not None and _hostname(host) in allowed:
+        if host is not None and _authority_hostname(host) in allowed:
             return None
         return _jsonrpc_error(403, -32000, f"Invalid Host header: {host}")
 
@@ -235,13 +230,6 @@ class McpHandler:
 
 
 def _lowlevel_server(server: _AnyServer) -> Server[Any]:
-    """Return the low-level server to serve, with subscriptions turned off.
-
-    Raises
-    ------
-    MCPServerConfigError
-        If ``server`` was built with the SDK's OAuth settings.
-    """
     if isinstance(server, MCPServer):
         # auth_server_provider and token_verifier both require auth.
         if server.settings.auth is not None:
@@ -269,7 +257,6 @@ def _cors_headers(cors: CORSOptions) -> dict[str, str]:
 
 
 def _cors_origin_hostname(cors: CORSOptions | None) -> frozenset[str]:
-    """Return a concrete CORS origin's hostname; ``*`` adds nothing."""
     hostname = _origin_hostname(cors.origin) if cors is not None else None
     return frozenset({hostname}) if hostname is not None else frozenset()
 
@@ -278,8 +265,7 @@ def _lower(names: Sequence[str] | None) -> frozenset[str] | None:
     return frozenset(name.lower() for name in names) if names is not None else None
 
 
-def _hostname(authority: str) -> str | None:
-    """Return the hostname of a ``host[:port]``; ``None`` if it's anything else."""
+def _authority_hostname(authority: str) -> str | None:
     parsed = urlsplit(f"//{authority}")
     if parsed.netloc != authority or "@" in authority:
         return None
@@ -287,17 +273,16 @@ def _hostname(authority: str) -> str | None:
 
 
 def _origin_hostname(origin: str) -> str | None:
-    """Return an ``http(s)`` origin's hostname; ``None`` for any other origin."""
     parsed = urlsplit(origin)
     if parsed.scheme not in ("http", "https") or origin != (
         f"{parsed.scheme}://{parsed.netloc}"
     ):
         return None
-    return _hostname(parsed.netloc)
+    return _authority_hostname(parsed.netloc)
 
 
+# Upstream handler-errors.ts.
 def _jsonrpc_error(status: int, code: int, message: str) -> Response:
-    """Return a JSON-RPC error with no request id (upstream ``handler-errors.ts``)."""
     body = {"jsonrpc": "2.0", "error": {"code": code, "message": message}, "id": None}
     return Response(
         json.dumps(body), status=status, headers={"Content-Type": "application/json"}

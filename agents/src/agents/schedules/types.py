@@ -1,5 +1,3 @@
-"""Types for the Scheduler capability."""
-
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -67,16 +65,11 @@ class Schedule:
 
 
 type ScheduleCallback = Callable[[Any, Schedule], Awaitable[Any]]
-"""A schedule callback, called as ``callback(payload, schedule)``."""
-
 type ScheduleErrorHandler = Callable[[Exception], Awaitable[None]]
-"""Observes a schedule's terminal failure (after its last attempt)."""
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class ScheduleTiming:
-    """When and how a schedule runs: a `Schedule` minus identity and payload."""
-
     type: ScheduleType
     time_ms: int
     delay_seconds: float | None = None
@@ -86,35 +79,26 @@ class ScheduleTiming:
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class CronField:
-    """One cron field's allowed range and names."""
-
     minimum: int
     maximum: int
     aliases: Mapping[str, str] = field(default_factory=dict)
 
 
 class ScheduleJobPayload(TypedDict):
-    """What a schedule job carries besides its callback name (the job's ``fn``).
-
-    ``retry`` is the caller's override as given (JSON text), for reading the
-    schedule back; the job's own retry policy is resolved against the
-    Scheduler's default. ``owner_path`` / ``owner_path_key`` are a facet's
-    route address (``None`` on the root).
-    """
-
     payload: JSONValue
     type: ScheduleType
+    # The caller's override as given, for reading the schedule back. The job's
+    # own retry policy is resolved against the Scheduler's default.
     retry: str | None
     delay_seconds: float | None
     cron: str | None
     interval_seconds: float | None
+    # The owning facet's route address, or None on the root.
     owner_path: str | None
     owner_path_key: str | None
 
 
 class WireSchedule(TypedDict):
-    """A `Schedule` as JSON, carried in routed messages."""
-
     id: str
     callback: str
     time_ms: int
@@ -122,15 +106,11 @@ class WireSchedule(TypedDict):
 
 
 class InsertResult(TypedDict):
-    """A routed insert's result: the schedule, and whether it's new."""
-
     schedule: WireSchedule
     created: bool
 
 
 class InsertMessage(TypedDict):
-    """A facet creating a schedule on the root."""
-
     type: Literal["insert"]
     timing: dict[str, Any]
     callback: str
@@ -140,15 +120,11 @@ class InsertMessage(TypedDict):
 
 
 class ByIdMessage(TypedDict):
-    """A facet reading or cancelling one of its schedules."""
-
     type: Literal["get", "cancel"]
     id: str
 
 
 class ListMessage(TypedDict):
-    """A facet listing its schedules."""
-
     type: Literal["list"]
     id: str | None
     schedule_type: ScheduleType | None
@@ -157,15 +133,10 @@ class ListMessage(TypedDict):
 
 
 class DispatchMessage(TypedDict):
-    """The root handing a due schedule to the facet that owns it.
-
-    ``retry`` is the job's resolved retry policy (JSON text).
-    """
-
     type: Literal["dispatch"]
     schedule: WireSchedule
+    # The job's resolved policy, unlike ScheduleJobPayload.retry.
     retry: str | None
 
 
 type ScheduleRouteMessage = InsertMessage | ByIdMessage | ListMessage | DispatchMessage
-"""A Scheduler operation routed between Lifecycles."""

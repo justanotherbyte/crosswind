@@ -1,8 +1,6 @@
-"""The HTTP transport the client sends every request through.
+"""Every request goes through an `HttpTransport` so tests can swap in an ASGI app.
 
-`HttpTransport` is the seam: the default `FetchTransport` uses the Workers
-``fetch`` (aborting on cancellation), and tests pass a transport that runs
-an ASGI app in-process (``.design/mcp_engine.md`` §3).
+See ``.design/mcp_engine.md`` §3.
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
@@ -113,13 +111,6 @@ class FetchTransport:
 
 
 async def read_body(response: HttpResponse) -> str:
-    """Return the whole body as text (UTF-8, errors replaced).
-
-    Raises
-    ------
-    MCPProtocolError
-        If the body is larger than 1 MiB.
-    """
     parts: list[bytes] = []
     size = 0
     async for chunk in response.chunks():
@@ -130,22 +121,13 @@ async def read_body(response: HttpResponse) -> str:
     return b"".join(parts).decode("utf-8", errors="replace")
 
 
+# The headers, auth and body were meant for one endpoint, so only a
+# same-origin 307 or 308 (such as a trailing-slash fix) is followed. The caller
+# treats any other redirect as a failure, like the SDK's stream_within_origin.
 @asynccontextmanager
 async def send_within_origin(
     http: HttpTransport, request: HttpRequest
 ) -> AsyncGenerator[HttpResponse]:
-    """Send ``request``, following 307/308 redirects that stay on its origin.
-
-    Everything on a request (headers, auth, body) was meant for one endpoint,
-    so only a same-origin 307 or 308, such as a trailing-slash fix, is
-    followed, at most 3 times. Any other redirect response is returned for
-    the caller to treat as a failure (the SDK's ``stream_within_origin``).
-
-    Raises
-    ------
-    MCPTransportError
-        If a request fails.
-    """
     for _ in range(_MAX_REDIRECTS):
         async with http.request(request) as response:
             location = _same_origin_redirect(request.url, response)

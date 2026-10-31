@@ -1,5 +1,3 @@
-"""Types for sub-agents (facets)."""
-
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import datetime
@@ -51,16 +49,12 @@ class SubAgentInfo:
 
 
 class SubAgentPathMatch(NamedTuple):
-    """The first ``/sub/{class}/{name}`` hop of a URL, and what follows it."""
-
     child_class: str
     child_name: str
     remaining_path: str
 
 
 class ForwardedConnection(TypedDict):
-    """A root-owned connection as a sub-agent sees it (sent with each event)."""
-
     id: str
     uri: str | None
     tags: list[str]
@@ -70,62 +64,40 @@ class ForwardedConnection(TypedDict):
 
 
 class WireRouteAddress(TypedDict):
-    """A `RouteAddress` across RPC."""
-
     key: str
     data: str
 
 
 class WireEnvelope(TypedDict):
-    """A `RouteEnvelope` across RPC."""
-
     capability: str
     source: WireRouteAddress | None
     payload: Any
 
 
 class SubAgentsHost(Protocol):
-    """What the sub-agents engine needs from its agent (``Agent`` provides it)."""
+    @property
+    def ctx(self) -> Any: ...
 
     @property
-    def ctx(self) -> Any:
-        """The Durable Object context."""
-        ...
+    def lifecycle(self) -> "Lifecycle": ...
 
     @property
-    def lifecycle(self) -> "Lifecycle":
-        """The agent's Lifecycle."""
-        ...
-
-    @property
-    def _websockets(self) -> "WebSockets":
-        """The agent's WebSockets capability (the root's native sockets)."""
-        ...
+    def _websockets(self) -> "WebSockets": ...
 
     async def on_before_sub_agent(
         self, request: "Request", child: Any
-    ) -> "Request | Response | None":
-        """Gate a request to a sub-agent (the parent's hook)."""
-        ...
+    ) -> "Request | Response | None": ...
 
     def _connect_virtual(
         self, connection: "Connection", request: "Request"
-    ) -> Awaitable[None]:
-        """Run the connect sequence for a forwarded connection."""
-        ...
+    ) -> Awaitable[None]: ...
 
     def _message_locally(
         self, connection: "Connection", message: str | bytes
-    ) -> Awaitable[None]:
-        """Handle a frame without forwarding it."""
-        ...
+    ) -> Awaitable[None]: ...
 
     def _close_locally(
         self, connection: "Connection", code: int, reason: str, was_clean: bool
-    ) -> Awaitable[None]:
-        """Handle a close without forwarding it."""
-        ...
+    ) -> Awaitable[None]: ...
 
-    def _cleanup_route_prefix(self, prefix: str) -> Awaitable[None]:
-        """Cancel the root's routed work for a facet subtree."""
-        ...
+    def _cleanup_route_prefix(self, prefix: str) -> Awaitable[None]: ...

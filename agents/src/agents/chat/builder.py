@@ -1,18 +1,19 @@
-"""Folding stream chunks into a message's parts (upstream ``chat/message-builder.ts``).
+"""Upstream ``chat/message-builder.ts`` (``.design/chat_engine.md`` §4.2).
 
-Works on wire-form dictionaries (``.design/chat_engine.md`` §4.2), mutating a
-message's ``parts`` list in place as upstream does. An absent key plays the
-part of JavaScript's ``undefined``: stored JSON never has one.
+It works on wire-form dictionaries and mutates a message's ``parts`` list in
+place as upstream does. An absent key stands in for JavaScript's
+``undefined``, because stored JSON never has one.
 
-The rules that matter: text and reasoning go ``streaming`` → ``done``; tool
-parts only move forward (providers may resend earlier tool calls in a
-continuation); a tool call's raw input text is kept aside, so a partial JSON
-string is never saved; and tool input is always a JSON object.
+Tool parts only move forward, because providers may resend earlier tool calls
+in a continuation. A tool call's raw input text is kept aside, so a partial
+JSON string is never saved.
 """
 
 import json
 from collections.abc import Iterable
 from typing import Any
+
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "BuilderScratch",
@@ -29,17 +30,11 @@ type Part = dict[str, Any]
 type Chunk = dict[str, Any]
 
 _APPROVAL_STATES = frozenset({"approval-requested", "approval-responded"})
-_SETTLED = frozenset({"output-available", "output-error", "output-denied"})
 
 
+# Upstream keeps this per-part state in module ``WeakMap``s. Entries are keyed by
+# ``id(part)`` and hold the part, so the id can't be reused while the entry lives.
 class BuilderScratch:
-    """Per-part state upstream keeps in module ``WeakMap``s.
-
-    A tool call's raw input text, and whether its input is only provisional
-    (from a delta, replaceable by a late ``tool-input-available``). Keyed by
-    the part's identity; each entry holds the part, so its id can't be reused.
-    """
-
     __slots__ = ("_provisional", "_raw_input")
 
     def __init__(self) -> None:
@@ -47,37 +42,27 @@ class BuilderScratch:
         self._provisional: dict[int, Part] = {}
 
     def raw_input(self, part: Part) -> str | None:
-        """Return the raw input text collected for ``part``."""
         entry = self._raw_input.get(id(part))
         return entry[1] if entry is not None else None
 
     def add_raw_input(self, part: Part, text: str) -> None:
-        """Append to ``part``'s raw input text."""
         self._raw_input[id(part)] = (part, (self.raw_input(part) or "") + text)
 
     def drop_raw_input(self, part: Part) -> None:
-        """Forget ``part``'s raw input text."""
         self._raw_input.pop(id(part), None)
 
     def is_provisional(self, part: Part) -> bool:
-        """Return whether ``part``'s input came from a delta."""
         return id(part) in self._provisional
 
     def mark_provisional(self, part: Part, provisional: bool) -> None:
-        """Mark (or unmark) ``part``'s input as provisional."""
         if provisional:
             self._provisional[id(part)] = part
         else:
             self._provisional.pop(id(part), None)
 
 
+# Some providers reject tool input that isn't a JSON object.
 def normalize_tool_input(raw: Any) -> tuple[Any, bool]:
-    """Return ``raw`` as a JSON object, and whether it changed.
-
-    An object stays; a string holding a JSON object is parsed; anything else
-    (``None``, an array, unparseable text) becomes ``{}``. Some providers
-    reject tool input that isn't an object.
-    """
     if isinstance(raw, dict):
         return raw, False
     if isinstance(raw, str) and raw.strip().startswith("{"):
@@ -91,7 +76,6 @@ def normalize_tool_input(raw: Any) -> tuple[Any, bool]:
 
 
 def is_late_tool_input_chunk(parts: list[Part], chunk: Chunk) -> bool:
-    """Return whether ``chunk`` is tool input arriving after its approval request."""
     if chunk.get("type") != "tool-input-available":
         return False
     existing = _find_tool_part(parts, chunk.get("toolCallId"))
@@ -101,13 +85,10 @@ def is_late_tool_input_chunk(parts: list[Part], chunk: Chunk) -> bool:
 def apply_late_tool_input(
     parts: list[Part], chunk: Chunk, scratch: BuilderScratch | None = None
 ) -> bool:
-    """Fill a tool part's input without leaving its approval state.
-
-    Only an absent or provisional input is replaced. Returns whether it was.
-    """
-    scratch = scratch if scratch is not None else BuilderScratch()
     if not is_late_tool_input_chunk(parts, chunk):
         return False
+
+    scratch = scratch if scratch is not None else BuilderScratch()
     part = _find_tool_part(parts, chunk.get("toolCallId"))
     assert part is not None
     if "input" in part and not scratch.is_provisional(part):
@@ -121,11 +102,6 @@ def apply_late_tool_input(
 def late_tool_input_forward_chunks(
     parts: list[Part], chunk: Chunk, approval_request: Chunk | None = None
 ) -> list[Chunk]:
-    """Return the chunks to send for late tool input on a pending approval.
-
-    The input chunk (with the part's normalized input), then the approval
-    request again, so a client that applied the input still sees the request.
-    """
     if chunk.get("type") != "tool-input-available":
         return []
     part = _find_tool_part(parts, chunk.get("toolCallId"))
@@ -146,18 +122,13 @@ def late_tool_input_forward_chunks(
         }
         if "descriptor" in approval:
             request["approvalDescriptor"] = approval["descriptor"]
+    # The request goes again so a client that applied the input still sees it.
     return [{**chunk, "input": part.get("input")}, request]
 
 
 def apply_chunk_to_parts(
     parts: list[Part], chunk: Chunk, scratch: BuilderScratch | None = None
 ) -> bool:
-    """Apply one wire chunk to ``parts``; return whether the chunk type was handled.
-
-    ``start``, ``finish``, ``message-metadata``, ``finish-step``, and
-    ``error`` aren't parts and return ``False`` (the accumulator handles
-    them).
-    """
     scratch = scratch if scratch is not None else BuilderScratch()
     match chunk.get("type"):
         case "text-start":
@@ -261,7 +232,7 @@ def apply_chunk_to_parts(
                 _set(part, "errorText", chunk, "errorText")
                 _copy_call_fields(part, chunk, title=False)
                 parts.append(part)
-            elif existing.get("state") not in _SETTLED:
+            elif existing.get("state") not in SETTLED_TOOL_STATES:
                 existing["state"] = "output-error"
                 _set(existing, "errorText", chunk, "errorText")
                 existing["input"] = normalize_tool_input(chunk.get("input"))[0]
@@ -269,7 +240,7 @@ def apply_chunk_to_parts(
         case "tool-approval-request":
             part = _find_tool_part(parts, chunk.get("toolCallId"))
             if part is not None and part.get("state") not in (
-                _SETTLED | {"approval-responded"}
+                SETTLED_TOOL_STATES | {"approval-responded"}
             ):
                 raw = scratch.raw_input(part)
                 if "input" not in part and raw is not None:
@@ -285,7 +256,7 @@ def apply_chunk_to_parts(
         case "tool-output-denied":
             part = _find_tool_part(parts, chunk.get("toolCallId"))
             if part is not None and part.get("state") not in (
-                _SETTLED | {"approval-responded"}
+                SETTLED_TOOL_STATES | {"approval-responded"}
             ):
                 part["state"] = "output-denied"
         case "tool-output-available":
@@ -316,12 +287,12 @@ def apply_chunk_to_parts(
             _set(part, "data", chunk, "data")
             parts.append(part)
         case _:
+            # Non-part chunks (start, finish, metadata, error) are the accumulator's.
             return False
     return True
 
 
 def is_replay_chunk(parts: list[Part], chunk: Chunk) -> bool:
-    """Return whether ``chunk`` would move a tool part backwards (a resend)."""
     kind = chunk.get("type")
     tool_call_id = chunk.get("toolCallId")
     if kind in ("tool-output-denied", "tool-approval-request"):
@@ -329,7 +300,7 @@ def is_replay_chunk(parts: list[Part], chunk: Chunk) -> bool:
             return False
         existing = _find_tool_part(parts, tool_call_id)
         return existing is not None and existing.get("state") in (
-            _SETTLED | {"approval-responded"}
+            SETTLED_TOOL_STATES | {"approval-responded"}
         )
     if kind not in ("tool-input-start", "tool-input-delta", "tool-input-available"):
         return False
@@ -344,10 +315,6 @@ def is_replay_chunk(parts: list[Part], chunk: Chunk) -> bool:
 
 
 def partial_stream_text(bodies: Iterable[str]) -> tuple[str, list[Part]]:
-    """Rebuild parts from stored chunk bodies; return their text and the parts.
-
-    Bodies that aren't JSON are skipped.
-    """
     parts: list[Part] = []
     scratch = BuilderScratch()
     for body in bodies:
@@ -363,9 +330,6 @@ def partial_stream_text(bodies: Iterable[str]) -> tuple[str, list[Part]]:
         if part.get("type") == "text" and isinstance(part.get("text"), str)
     )
     return text, parts
-
-
-# Helpers
 
 
 def _or(value: Any, default: Any) -> Any:

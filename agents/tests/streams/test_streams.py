@@ -39,9 +39,6 @@ async def collect(streams: Streams, stream_id: str, start: int = 0) -> list[Any]
     return [c.chunk async for c in streams.read(stream_id, start=start)]
 
 
-# Producing
-
-
 def test_append_close_and_status() -> None:
     _, streams, events = setup()
 
@@ -157,9 +154,6 @@ def test_non_ascii_text_is_stored_as_is() -> None:
     assert run(streams, scenario) == ['"héllo 🌍"', ["héllo 🌍"]]
 
 
-# Reading
-
-
 def test_read_replays_then_follows_until_settled() -> None:
     _, streams, _ = setup()
 
@@ -255,9 +249,6 @@ def test_a_cancelled_reader_leaves_no_waiter() -> None:
     assert run(streams, scenario) == {}
 
 
-# Status, list, delete
-
-
 def test_list_filters_newest_first() -> None:
     _, streams, _ = setup()
 
@@ -299,9 +290,6 @@ def test_delete_only_settled_streams() -> None:
 
     assert run(streams, scenario) == [True, False, None]
     assert types(events)[-1] == "stream:deleted"
-
-
-# The cutover
 
 
 def test_the_cutover_commits_and_discards_together() -> None:
@@ -370,9 +358,6 @@ def test_settling_a_settled_stream_does_not_commit() -> None:
 
     status = run(streams, scenario)
     assert commits == [] and status is not None
-
-
-# The synchronous surface
 
 
 def test_the_synchronous_surface() -> None:

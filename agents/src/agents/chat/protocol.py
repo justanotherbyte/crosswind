@@ -1,4 +1,4 @@
-"""The chat wire protocol: frame types and parsing (wire protocol §7).
+"""Wire protocol §7.
 
 Port of upstream ``chat/protocol.ts``, ``chat/wire-types.ts``,
 ``chat/parse-protocol.ts``, and the frame helpers of ``chat/connection.ts``
@@ -63,48 +63,36 @@ TOOL_APPROVAL: Final = "cf_agent_tool_approval"
 MESSAGE_UPDATED: Final = "cf_agent_message_updated"
 CHAT_RECOVERING: Final = "cf_agent_chat_recovering"
 
+# The client's only proof of idleness, sent when no active, pending, or terminal
+# stream exists.
 RESUME_NONE_IDLE: Final = "idle"
-"""No active, pending, or terminal stream exists (the only proof of idleness)."""
+# An active tool continuation belongs to another live connection.
 RESUME_NONE_CONTINUATION_OWNED: Final = "continuation-owned"
-"""An active tool continuation belongs to another live connection."""
 
+# ``skipped`` turns never ran, because a newer send superseded them or the
+# concurrency policy dropped them. A ``recovering`` request stopped, but
+# recovery continues its turn under a new request with the same ``messageIds``.
 type ChatTurnOutcome = Literal["completed", "error", "aborted", "skipped", "recovering"]
-"""How a chat request ended, sent on its terminal frame.
-
-``skipped``: the turn never ran (a newer send superseded it, or the
-concurrency policy dropped it). ``recovering``: this request stopped, but
-recovery continues the turn under a new request with the same
-``messageIds``.
-"""
-
-
-# Incoming frames
 
 
 @dataclass(slots=True, frozen=True)
 class ChatRequest:
-    """``cf_agent_use_chat_request``: start a turn (``init`` is a ``RequestInit``)."""
-
     id: str
-    init: dict[str, Any]
+    init: dict[str, Any]  # a fetch ``RequestInit``
 
 
 @dataclass(slots=True, frozen=True)
 class Clear:
-    """``cf_agent_chat_clear``: clear the history."""
+    pass
 
 
 @dataclass(slots=True, frozen=True)
 class Cancel:
-    """``cf_agent_chat_request_cancel``: stop a running turn."""
-
     id: str
 
 
 @dataclass(slots=True, frozen=True)
 class ToolResult:
-    """``cf_agent_tool_result``: the result of a tool the browser ran."""
-
     tool_call_id: str
     tool_name: str
     output: JSONValue
@@ -125,22 +113,16 @@ class ToolApproval:
 
 @dataclass(slots=True, frozen=True)
 class StreamResumeRequest:
-    """``cf_agent_stream_resume_request``: ask whether there is a stream to resume."""
-
     probe_id: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
 class StreamResumeAck:
-    """``cf_agent_stream_resume_ack``: send the replay of ``id``."""
-
     id: str
 
 
 @dataclass(slots=True, frozen=True)
 class Messages:
-    """``cf_agent_chat_messages`` from a client: its transcript."""
-
     messages: Sequence[Any] = field(default_factory=tuple)
 
 
@@ -156,14 +138,9 @@ type ChatProtocolEvent = (
 )
 
 
+# ``None`` hands the frame to the agent's ``on_message``. Field types aren't
+# checked, as upstream.
 def parse_protocol_message(raw: str) -> ChatProtocolEvent | None:
-    """Return the chat event a text frame carries, or ``None``.
-
-    ``None`` means the frame isn't JSON or isn't a chat frame, and belongs to
-    the agent's ``on_message``. Field types aren't checked, as upstream, except
-    that a non-object ``init`` becomes ``{}`` (no POST, so it goes to
-    ``on_message`` as upstream's ``init.method`` check sends it).
-    """
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
@@ -172,6 +149,8 @@ def parse_protocol_message(raw: str) -> ChatProtocolEvent | None:
         return None
     match data.get("type"):
         case "cf_agent_use_chat_request":
+            # A non-object ``init`` has no POST method, so upstream's ``init.method``
+            # check sends it to ``on_message``.
             init = data.get("init")
             return ChatRequest(
                 id=data.get("id"), init=init if isinstance(init, dict) else {}
@@ -209,11 +188,7 @@ def parse_protocol_message(raw: str) -> ChatProtocolEvent | None:
     return None
 
 
-# Outgoing frames
-
-
 def send_if_open(connection: Connection, frame: dict[str, Any] | str) -> bool:
-    """Send a frame; return ``False`` if the socket had already closed."""
     try:
         connection.send(frame if isinstance(frame, str) else dumps(frame))
     except _ffi.JsException:
@@ -221,12 +196,9 @@ def send_if_open(connection: Connection, frame: dict[str, Any] | str) -> bool:
     return True
 
 
+# Terminal frames echo these as ``messageIds``, so a client settles exactly the
+# sends a completion, error, or cancellation belongs to.
 def origin_message_ids(messages: Any) -> list[str] | None:
-    """Return the ids of the trailing run of user messages in a request.
-
-    Terminal frames echo them as ``messageIds``, so a client settles exactly
-    the sends a completion, error, or cancellation belongs to.
-    """
     if not isinstance(messages, list):
         return None
     ids: list[str] = []
@@ -242,7 +214,6 @@ def origin_message_ids(messages: Any) -> list[str] | None:
 def with_origin_message_ids(
     frame: dict[str, Any], message_ids: Sequence[str] | None
 ) -> dict[str, Any]:
-    """Return ``frame`` with ``messageIds`` added if it's terminal and lacks them."""
     if (
         not message_ids
         or "messageIds" in frame

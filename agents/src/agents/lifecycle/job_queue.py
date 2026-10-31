@@ -1,8 +1,5 @@
-"""The durable job queue every capability shares, and the physical alarm it derives.
+"""Port of upstream ``lifecycle/job-queue.ts``.
 
-Port of upstream ``lifecycle/job-queue.ts``. One table, ``cf_agents_jobs``,
-holds every pending job; a job is an owner (capability id or ``"host"``), a
-function name, a due time, and a payload. Jobs are scoped to their owner.
 Storage keeps upstream's epoch milliseconds and JSON field names
 (``.design/sql_schemas.md`` §2).
 """
@@ -32,14 +29,14 @@ __all__ = (
     "is_hung",
     "job_from_row",
     "new_job_id",
+    "retry_from_json",
+    "retry_to_json",
 )
 
 HOST_JOB_OWNER = "host"
-"""The owner under which the host's own jobs are stored."""
-
 DEFAULT_HUNG_TIMEOUT_SECONDS = 30
-"""Seconds before an in-flight single-flight job is treated as hung."""
 
+# Same alphabet and length as upstream's nanoid(9).
 _ID_ALPHABET = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict"
 _ID_LENGTH = 9
 
@@ -62,11 +59,11 @@ CREATE TABLE IF NOT EXISTS cf_agents_jobs (
 
 
 def new_job_id() -> str:
-    """Return a random job id (same alphabet and length as upstream's nanoid(9))."""
     return "".join(secrets.choice(_ID_ALPHABET) for _ in range(_ID_LENGTH))
 
 
 def retry_to_json(retry: RetryOptions) -> str:
+    # Upstream's stored shape: camelCase keys, milliseconds.
     return json.dumps(
         {
             "maxAttempts": retry.max_attempts,
@@ -91,7 +88,6 @@ def retry_from_json(text: str) -> RetryOptions:
 
 
 def job_from_row(row: JobRow) -> LifecycleJob:
-    """Convert a raw queue row to a `LifecycleJob`."""
     payload = row["payload"]
     retry = row["retry_options"]
 
@@ -111,13 +107,11 @@ def job_from_row(row: JobRow) -> LifecycleJob:
 
 
 def hung_timeout_ms(row: JobRow) -> int:
-    """Return a row's hung / slow-dispatch threshold in milliseconds."""
     seconds = row["hung_timeout_seconds"]
     return (seconds if seconds is not None else DEFAULT_HUNG_TIMEOUT_SECONDS) * 1000
 
 
 def is_hung(row: JobRow, now_ms: int) -> bool:
-    """Return whether an in-flight row has run past its hung timeout."""
     return now_ms - (row["execution_started_at"] or 0) >= hung_timeout_ms(row)
 
 
@@ -129,25 +123,20 @@ def _require_time(time: datetime) -> int:
 
 
 class JobQueue:
-    """The SQL-backed queue. Lifecycle owns the one instance per object.
-
-    Parameters
-    ----------
-    sql
-        The object's SQL helper.
-    """
-
     __slots__ = ("_sql", "_table_ready")
 
     def __init__(self, sql: Sql) -> None:
         self._sql = sql
         self._table_ready = False
 
-    def _rows(self, query: Any, *params: Any) -> Sequence[JobRow]:
+    def _table_sql(self) -> Sql:
         if not self._table_ready:
             self._sql(_CREATE_TABLE)
             self._table_ready = True
-        return self._sql(query, *params, row=JobRow)
+        return self._sql
+
+    def _rows(self, query: Any, *params: Any) -> Sequence[JobRow]:
+        return self._table_sql()(query, *params, row=JobRow)
 
     def push(
         self,
@@ -163,21 +152,11 @@ class JobQueue:
         exclusive: bool = False,
         recovery_loop: bool = False,
     ) -> LifecycleJob:
-        """Insert a job, or replace ``owner``'s job with the same id.
-
-        Replacing clears any in-flight marker, so this newer intent wins over
-        an outcome a running dispatch returns later.
-
-        Raises
-        ------
-        ValueError
-            If ``fn`` is blank, ``time`` is before the epoch, or ``id``
-            belongs to another owner (ids are scoped to their owner).
-        TypeError
-            If ``time`` is naive.
-        """
         if not fn.strip():
             raise ValueError("jobs require a non-empty fn")
+
+        # Replacing clears the in-flight marker, so this newer intent wins over
+        # an outcome a running dispatch returns later.
         job_id = id if id is not None else new_job_id()
         self._rows(
             """INSERT INTO cf_agents_jobs
@@ -211,7 +190,6 @@ class JobQueue:
         job = self.get(owner, job_id)
         if job is None:
             raise ValueError(self._push_failure(job_id))
-
         return job
 
     def _push_failure(self, job_id: str) -> str:
@@ -224,7 +202,6 @@ class JobQueue:
         return f"failed to persist job {job_id!r}"
 
     def cancel(self, owner: str, id: str) -> bool:
-        """Delete ``owner``'s job ``id``; return whether one existed."""
         if self.get(owner, id) is None:
             return False
         self._rows(
@@ -233,7 +210,6 @@ class JobQueue:
         return True
 
     def reschedule(self, owner: str, id: str, time: datetime) -> bool:
-        """Move ``owner``'s job ``id`` to ``time``; return whether one existed."""
         ms = _require_time(time)
         if self.get(owner, id) is None:
             return False
@@ -248,14 +224,12 @@ class JobQueue:
         return True
 
     def get(self, owner: str, id: str) -> LifecycleJob | None:
-        """Return ``owner``'s job ``id``, or ``None``."""
         rows = self._rows(
             "SELECT * FROM cf_agents_jobs WHERE id = ? AND capability = ?", id, owner
         )
         return job_from_row(rows[0]) if rows else None
 
     def list(self, owner: str) -> Sequence[LifecycleJob]:
-        """Return every job ``owner`` holds, earliest first."""
         rows = self._rows(
             "SELECT * FROM cf_agents_jobs WHERE capability = ? ORDER BY time ASC",
             owner,
@@ -263,20 +237,17 @@ class JobQueue:
         return [job_from_row(row) for row in rows]
 
     def due(self, now_ms: int) -> Sequence[JobRow]:
-        """Return the raw rows due at ``now_ms``, earliest first."""
         return self._rows(
             "SELECT * FROM cf_agents_jobs WHERE time <= ? ORDER BY time ASC", now_ms
         )
 
-    def due_row(self, id: str, now_ms: int) -> JobRow | None:
-        """Return job ``id``'s row if it still exists and is still due."""
+    def still_due(self, id: str, now_ms: int) -> JobRow | None:
         rows = self._rows(
             "SELECT * FROM cf_agents_jobs WHERE id = ? AND time <= ?", id, now_ms
         )
         return rows[0] if rows else None
 
     def mark_running(self, id: str, now_ms: int) -> None:
-        """Mark job ``id`` as dispatching, started at ``now_ms``."""
         self._rows(
             """UPDATE cf_agents_jobs SET running = 1, execution_started_at = ?
                WHERE id = ?""",
@@ -285,7 +256,6 @@ class JobQueue:
         )
 
     def clear_running(self, id: str) -> None:
-        """Clear job ``id``'s in-flight marker."""
         self._rows(
             """UPDATE cf_agents_jobs SET running = 0, execution_started_at = NULL
                WHERE id = ?""",
@@ -293,11 +263,9 @@ class JobQueue:
         )
 
     def delete(self, id: str) -> None:
-        """Delete job ``id`` whoever owns it."""
         self._rows("DELETE FROM cf_agents_jobs WHERE id = ?", id)
 
     def retime(self, id: str, time_ms: int) -> None:
-        """Move job ``id`` regardless of its in-flight marker (breaker backoff)."""
         self._rows(
             """UPDATE cf_agents_jobs
                SET time = ?, running = 0, execution_started_at = NULL
@@ -307,7 +275,6 @@ class JobQueue:
         )
 
     def delay_recovery_loop_jobs(self, time_ms: int) -> None:
-        """Back off every recovery-loop job due before ``time_ms`` (breaker)."""
         self._rows(
             """UPDATE cf_agents_jobs
                SET time = ?, running = 0, execution_started_at = NULL
@@ -317,22 +284,17 @@ class JobQueue:
         )
 
     def recovery_loop_jobs(self) -> Sequence[LifecycleJob]:
-        """Return every recovery-loop job, earliest first."""
         rows = self._rows(
             "SELECT * FROM cf_agents_jobs WHERE recovery_loop = 1 ORDER BY time ASC"
         )
         return [job_from_row(row) for row in rows]
 
     def purge_recovery_loop_jobs(self) -> None:
-        """Delete every recovery-loop job (the breaker sealed)."""
         self._rows("DELETE FROM cf_agents_jobs WHERE recovery_loop = 1")
 
     def apply_outcome(self, id: str, outcome: JobOutcome) -> None:
-        """Apply a dispatch's outcome, unless newer intent superseded it.
-
-        Every dispatch carries ``running = 1``; a same-id push or reschedule
-        during dispatch clears it, and then the outcome is quietly dropped.
-        """
+        # Every dispatch carries running = 1. A same-id push or reschedule during
+        # dispatch clears it, and then the WHERE drops this outcome.
         if outcome is None:
             self._rows("DELETE FROM cf_agents_jobs WHERE id = ? AND running = 1", id)
         elif outcome == "yield":
@@ -347,20 +309,24 @@ class JobQueue:
             )
 
     def next_alarm_time(self, now_ms: int) -> int | None:
-        """Return when the physical alarm should fire, or ``None`` for no alarm.
+        exclusive = self._earliest_exclusive_time()
+        if exclusive is not None:
+            return exclusive
 
-        An exclusive job's time wins outright. Otherwise: the earliest ready
-        job, clamped into the future (overdue rows must re-fire), and the
-        earliest hung-timeout recheck of an in-flight single-flight job.
-        """
-        exclusive = self._sql(
+        candidates = (
+            self._earliest_ready_time(now_ms),
+            self._earliest_hung_recheck(now_ms),
+        )
+        return min((time for time in candidates if time is not None), default=None)
+
+    def _earliest_exclusive_time(self) -> int | None:
+        rows = self._table_sql()(
             "SELECT MIN(time) AS time FROM cf_agents_jobs WHERE exclusive = 1"
         )
-        if exclusive and exclusive[0]["time"] is not None:
-            return int(exclusive[0]["time"])
+        return int(rows[0]["time"]) if rows and rows[0]["time"] is not None else None
 
-        candidate: int | None = None
-        ready = self._sql(
+    def _earliest_ready_time(self, now_ms: int) -> int | None:
+        rows = self._table_sql()(
             """SELECT MIN(time) AS time FROM cf_agents_jobs
                WHERE singleflight = 0
                   OR running = 0
@@ -369,10 +335,13 @@ class JobQueue:
             DEFAULT_HUNG_TIMEOUT_SECONDS,
             now_ms,
         )
-        if ready and ready[0]["time"] is not None:
-            candidate = max(int(ready[0]["time"]), now_ms + 1)
+        if not rows or rows[0]["time"] is None:
+            return None
+        # Clamped into the future: overdue rows must re-fire.
+        return max(int(rows[0]["time"]), now_ms + 1)
 
-        in_flight = self._sql(
+    def _earliest_hung_recheck(self, now_ms: int) -> int | None:
+        rows = self._table_sql()(
             """SELECT MIN(coalesce(execution_started_at, 0)
                       + coalesce(hung_timeout_seconds, ?) * 1000) AS recheck
                FROM cf_agents_jobs
@@ -384,10 +353,9 @@ class JobQueue:
             DEFAULT_HUNG_TIMEOUT_SECONDS,
             now_ms,
         )
-        if in_flight and in_flight[0]["recheck"] is not None:
-            recheck = int(in_flight[0]["recheck"])
-            candidate = recheck if candidate is None else min(candidate, recheck)
-        return candidate
+        return (
+            int(rows[0]["recheck"]) if rows and rows[0]["recheck"] is not None else None
+        )
 
 
 class LifecycleJobs:

@@ -40,7 +40,7 @@ def test_comments_priming_and_fields() -> None:
     )
     assert events == [
         SseEvent(data="", id="1"),
-        SseEvent(event="custom", data="no-space", id="1", retry=3000),
+        SseEvent(event="custom", data="no-space", id="1", retry_ms=3000),
     ]
 
 

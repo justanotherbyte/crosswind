@@ -1,9 +1,7 @@
-"""Chat messages and their parts: AI SDK v6 ``UIMessage`` as dataclasses.
+"""AI SDK v6 ``UIMessage``, per ``.design/chat_models.md`` §5 and §6.
 
-``.design/chat_models.md`` §5 and §6. These are what ``self.messages`` returns
-and what hooks receive; the SDK stores and sends their wire form (see
-`agents.chat.codec`). Tool parts have one class per state, so a type checker
-knows ``output`` exists only once the tool has finished.
+Tool parts have one class per state, so a type checker knows ``output``
+exists only once the tool has finished.
 """
 
 from collections.abc import Sequence

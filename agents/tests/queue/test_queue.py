@@ -56,7 +56,6 @@ def event_types(events: list[LifecycleEvent]) -> list[str]:
     return [event.type for event in events]
 
 
-# Pushing
 def test_items_run_in_push_order_in_host_context_then_leave_the_queue() -> None:
     lifecycle, queue, recorder, events = setup()
 
@@ -162,7 +161,6 @@ def test_a_fresh_instance_queues_after_the_stored_tail() -> None:
     asyncio.run(scenario())
 
 
-# Inspecting and cancelling
 def test_get_list_and_cancel() -> None:
     _, queue, recorder, _ = setup()
 
@@ -194,7 +192,6 @@ def test_items_of_other_capabilities_are_invisible() -> None:
     asyncio.run(scenario())
 
 
-# Failures
 def test_failing_callback_is_retried_then_dropped_and_reported() -> None:
     reported: list[Exception] = []
 
@@ -267,7 +264,6 @@ def test_platform_failure_keeps_the_item() -> None:
     asyncio.run(scenario())
 
 
-# Facets: routed through the root's queue
 def facet_setup() -> tuple[Lifecycle, Queue, Lifecycle, Queue, Recorder]:
     recorder = Recorder()
     root_queue = Queue(target=Recorder())
@@ -353,7 +349,9 @@ def test_root_and_facet_items_with_the_same_stable_id_both_survive() -> None:
 
     async def scenario() -> None:
         await root_queue.push("handle", {"from": "root"}, id="refresh")
-        facet_item = await facet_queue.push(recorder.handle, {"from": "facet"}, id="refresh")
+        facet_item = await facet_queue.push(
+            recorder.handle, {"from": "facet"}, id="refresh"
+        )
         assert facet_item.id == "refresh"
         assert [item.payload for item in await root_queue.list()] == [{"from": "root"}]
         assert await facet_queue.list() == [facet_item]

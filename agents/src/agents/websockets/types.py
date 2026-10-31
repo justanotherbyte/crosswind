@@ -1,5 +1,3 @@
-"""Types for the WebSockets capability."""
-
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict
@@ -41,9 +39,8 @@ class CallableMetadata:
     streaming: bool = False
 
 
+# Wire protocol §5.4.
 class RpcRequest(TypedDict):
-    """An ``rpc`` frame from a client (wire §5.4)."""
-
     type: str
     id: str
     method: str
@@ -87,37 +84,26 @@ class WebSocketHandlers:
 
 
 type ConnectionDecision = Callable[[Connection, ConnectionContext], Awaitable[bool]]
-"""Decides something about a new connection, before any frame is sent."""
 
 type ConnectionTagger = Callable[[Connection, ConnectionContext], Awaitable[list[str]]]
-"""Returns the tags to accept a new connection under."""
 
 
 class SyncedState(Protocol):
-    """The part of a `State` capability that WebSockets syncs to clients."""
+    def get(self) -> Any: ...
 
-    def get(self) -> Any:
-        """Return the current state, or ``None`` when nothing is stored."""
-        ...
-
-    def set(self, state: Any, source: StateSource) -> None:
-        """Validate and save a change; raise to reject it."""
-        ...
+    # Raises to reject the change.
+    def set(self, state: Any, source: StateSource) -> None: ...
 
 
 class ConnectionMeta(TypedDict):
-    """The SDK's record of a connection, kept in its socket's attachment."""
-
     id: str
     tags: list[str]
     uri: str | None
 
 
+# The runtime caps a socket's hibernation attachment at 16 KiB.
 Attachment = TypedDict(
     "Attachment",
     {"__pk": ConnectionMeta, "__user": Any, "__flags": dict[str, Any]},
     total=False,
 )
-"""A managed socket's hibernation attachment: the SDK's metadata
-(``__pk``), the connection state (``__user``), and internal flags
-(``__flags``). Limited to 16 KiB in total."""

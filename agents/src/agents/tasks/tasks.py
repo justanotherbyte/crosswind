@@ -1,11 +1,10 @@
-"""Durable, replayable background work: the Tasks capability.
+"""Port of upstream ``tasks/tasks.ts`` (``.design/tasks_engine.md``).
 
-Port of upstream ``tasks/tasks.ts`` (``.design/tasks_engine.md``). Tasks owns
-the run and step tables, the definitions, run acceptance, generation-fenced
-claiming, and due-run processing. A run's ``next_at`` is the source of truth
-for when it wakes; it's mirrored as one Lifecycle job (``task:<run_id>``).
-Handlers replay from their first line on every attempt; completed steps
-return their journaled results.
+Tasks owns the run and step tables, the definitions, run acceptance,
+generation-fenced claiming, and due-run processing. A run's ``next_at`` is the
+source of truth for when it wakes; it's mirrored as one Lifecycle job
+(``task:<run_id>``). Handlers replay from their first line on every attempt;
+completed steps return their journaled results.
 """
 
 import asyncio
@@ -83,7 +82,6 @@ _WAKE_JOB_FN = "wake"
 # retries the alarm, while the run's claim deadline stays the durable wake.
 _WAKE_JOB_RETRY = RetryOptions(max_attempts=1)
 _MAX_DEFINITION_NAME_LENGTH = 256
-_LIVE = ("pending", "waiting", "running")
 _TERMINAL: tuple[TerminalTaskState, ...] = ("completed", "failed", "cancelled")
 
 type _StartMode = Literal["warm", "queued", "attached"]
@@ -153,8 +151,6 @@ class Tasks(LifecycleCapability):
     def _claim_timeout_ms(self) -> int:
         return self._defaults.timeout_ms + _CLAIM_SLACK_MS
 
-    # Definitions
-
     def _resolve(self, name: str) -> TaskHandler | None:
         return self._definitions.get(name) or self._registered.get(name)
 
@@ -175,19 +171,14 @@ class Tasks(LifecycleCapability):
                 f"Unknown task definition {name!r}: not declared on this Tasks"
             )
 
+    # Call once per name from the host's constructor, so every wake registers
+    # the same definitions.
     def _register(self, name: str, handler: TaskHandler) -> None:
-        """Register a reserved (``__cf``-prefixed) framework definition (internal).
-
-        Call once per name from the host's constructor, so every wake
-        registers the same definitions.
-        """
         if not name.startswith("__cf"):
             raise ValueError(f'_register() needs a "__cf"-prefixed name, not {name!r}')
         if name in self._definitions or name in self._registered:
             raise ValueError(f"Task definition {name!r} is already registered")
         self._registered[name] = handler
-
-    # Starting runs
 
     async def run(
         self,
@@ -234,24 +225,15 @@ class Tasks(LifecycleCapability):
     async def _run_attached(
         self, definition: str, input: JSONValue, **options: Any
     ) -> TaskReceipt:
-        """Accept a run and drive its first attempt in the caller (internal).
-
-        Reserved names are allowed. Returns when the attempt reaches a durable
-        boundary.
-        """
         receipt = await self._accept_reserved(definition, input, "attached", **options)
         if receipt.accepted:
             await self._execute_run(receipt.run_id)
         return receipt
 
+    # The alarm runs the first attempt inside the memory-limit breaker.
     async def _enqueue(
         self, definition: str, input: JSONValue, **options: Any
     ) -> TaskReceipt:
-        """Accept a run and leave its first attempt to the alarm (internal).
-
-        Reserved names are allowed. The alarm runs it inside the memory-limit
-        breaker.
-        """
         return await self._accept_reserved(definition, input, "queued", **options)
 
     async def _accept_reserved(
@@ -368,8 +350,6 @@ class Tasks(LifecycleCapability):
             created_at=from_epoch_ms(existing["created_at"]),
         )
 
-    # Lifecycle capability hooks
-
     @override
     async def on_start(self) -> None:
         """Create the tables once, then make every live run's wake sane."""
@@ -377,7 +357,7 @@ class Tasks(LifecycleCapability):
         if (await storage.get(_SCHEMA_VERSION_KEY) or 0) < _SCHEMA_VERSION:
             self._store.ensure_tables()
             await storage.put(_SCHEMA_VERSION_KEY, _SCHEMA_VERSION)
-        self._reconcile()
+        self._make_stranded_runs_due()
         await self._sync_all_wakes()
 
     @override
@@ -396,9 +376,9 @@ class Tasks(LifecycleCapability):
     async def on_memory_limit(self, context: MemoryLimitContext) -> None:
         """Contain a run whose wake hit the alarm memory-limit breaker.
 
-        The claim is stripped and the deadline pushed to the backoff, so the
-        run keeps its state (a replay still sees ``step.interrupted``) and
-        startup won't make it due again early; a sealed strike fails it.
+        Strips the claim and pushes the deadline to the backoff, so the run
+        keeps its state (a replay still sees ``step.interrupted``) and startup
+        won't make it due again early. A sealed strike fails the run.
         """
         job = context.executing
         if job is None or job.capability != self.capability_id:
@@ -428,7 +408,6 @@ class Tasks(LifecycleCapability):
     async def _apply_memory_limit(
         self, run_id: str, sealed: bool, next_ms: int | None
     ) -> None:
-        """Apply the memory-limit policy to a run whose storage is here."""
         if sealed:
             await self._settle_failed(
                 run_id,
@@ -454,13 +433,7 @@ class Tasks(LifecycleCapability):
         )
         await self._sync_wake(run_id)
 
-    # Dispatch and wakes
-
     async def _dispatch_run(self, run_id: str) -> JobOutcome:
-        """Drive one due run to its next durable boundary.
-
-        Holds the serial alarm loop for at most the dispatch budget.
-        """
         active = self._active.get(run_id)
         if active is not None:
             # A live attempt in this isolate: push the backstop forward so the
@@ -468,6 +441,7 @@ class Tasks(LifecycleCapability):
             self._refresh_claim(run_id)
             self.lifecycle.track_alarm_work(active.task)
             return self._wake_outcome(run_id)
+        # The alarm loop is serial, so hold it for at most the dispatch budget.
         attempt = asyncio.ensure_future(self._execute_run(run_id))
         done, _ = await asyncio.wait({attempt}, timeout=_DISPATCH_BUDGET_S)
         if not done:
@@ -490,14 +464,9 @@ class Tasks(LifecycleCapability):
         )
 
     async def _dispatch_to_owner(self, owner: RouteAddress, run_id: str) -> JobOutcome:
-        """Run a facet's due run on that facet (the root side of dispatch).
-
-        The facet awaits its attempt in full, so the root races its own
-        await against the dispatch budget; past it, the call keeps running,
-        tracked inside this alarm's memory-limit breaker. A memory-limit
-        reset on the facet reaches the root as the platform's own error, so
-        it's attributed here like a local attempt's.
-        """
+        # The facet awaits its attempt in full, so the root races its own await
+        # against the dispatch budget. Past it, the call keeps running, tracked
+        # inside this alarm's memory-limit breaker.
         message: DispatchMessage = {"type": "dispatch", "run_id": run_id}
         call = asyncio.ensure_future(self.lifecycle.routes.to(owner, message))
         done, _ = await asyncio.wait({call}, timeout=_DISPATCH_BUDGET_S)
@@ -509,22 +478,22 @@ class Tasks(LifecycleCapability):
         try:
             next_ms = call.result()
         except Exception as error:
+            # A memory-limit reset on the facet reaches the root as the
+            # platform's own error, so it's attributed here like a local
+            # attempt's.
             if is_platform_failure(error):
                 raise
             _log.exception("Error dispatching routed task run %r", run_id)
             return "yield"  # stay due: a later alarm retries the dispatch
         return Reschedule(at=from_epoch_ms(next_ms)) if next_ms is not None else None
 
+    # No dispatch budget here, because the root races its await of this call.
     async def _dispatch_routed_run(self, run_id: str) -> int | None:
-        """Run one due run here, on the facet that owns it; return its next wake.
-
-        No budget here: the root races its await of this call instead.
-        """
         if run_id in self._active:
             self._refresh_claim(run_id)
         else:
             await self._execute_run(run_id)
-        return self._store.next_at(run_id)
+        return self._store.live_run_deadline_ms(run_id)
 
     @override
     async def on_route(self, context: RouteContext) -> Any:
@@ -564,14 +533,11 @@ class Tasks(LifecycleCapability):
         raise ValueError(f"Unknown routed Tasks message {message!r}")
 
     def _set_routed_memory_limit_handler(self, handler: MemoryLimitHandler) -> None:
-        """Bridge memory-limit strikes on this facet's runs to the host (internal)."""
         self._routed_memory_limit_handler = handler
 
+    # Only the root's wake mirrors go here. The runs themselves go with the
+    # facets' storage.
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Cancel the root's mirrors of runs owned by a deleted facet subtree.
-
-        The runs themselves are deleted with the facets' storage (internal).
-        """
         for job in self.lifecycle.jobs.list():
             owner = _owner(_wake_payload(job))
             if owner is not None and (
@@ -580,19 +546,11 @@ class Tasks(LifecycleCapability):
                 await self.lifecycle.jobs.cancel(job.id)
 
     def _wake_outcome(self, run_id: str) -> JobOutcome:
-        """Return the wake job's outcome from the run row's deadline."""
-        next_ms = self._store.next_at(run_id)
+        next_ms = self._store.live_run_deadline_ms(run_id)
         return Reschedule(at=from_epoch_ms(next_ms)) if next_ms is not None else None
 
     async def _sync_wake(self, run_id: str) -> bool:
-        """Mirror a run's deadline into the job queue (cancel it once settled).
-
-        Returns
-        -------
-        bool
-            ``False`` when the queue already had exactly this wake.
-        """
-        next_ms = self._store.next_at(run_id)
+        next_ms = self._store.live_run_deadline_ms(run_id)
         if self.lifecycle.routes.source is not None:
             # The run stays here; only its wake goes to the root, which owns
             # the alarm.
@@ -611,7 +569,6 @@ class Tasks(LifecycleCapability):
         next_ms: int | None,
         owner: RouteAddress | None,
     ) -> bool:
-        """Push or cancel one wake job; ``False`` if it already matched."""
         if next_ms is None:
             await self.lifecycle.jobs.cancel(job_id)
             return True
@@ -647,8 +604,7 @@ class Tasks(LifecycleCapability):
         if run_ids and not pushed:
             await self.lifecycle.jobs.rearm()
 
-    def _reconcile(self) -> None:
-        """Make interrupted attempts and deadline-less runs due now (fresh start)."""
+    def _make_stranded_runs_due(self) -> None:
         now = now_ms()
         # No attempt survives an isolate, so every claimed row was interrupted.
         self._store.sql(
@@ -664,19 +620,16 @@ class Tasks(LifecycleCapability):
             now,
         )
 
-    # Execution
-
     async def _execute_run(self, run_id: str) -> None:
-        """Claim one due run and drive an attempt to its next durable boundary."""
         if run_id in self._active:
             return
         row = self._store.get_run(run_id)
         if row is None or row["state"] in _TERMINAL:
             return
-        now = now_ms()
         if row["cancel_requested"] == 1:
             await self._settle_cancelled(run_id, None, row["cancel_reason"])
             return
+        now = now_ms()
         if row["next_at"] is not None and row["next_at"] > now:
             return
         handler = self._resolve(row["definition"])
@@ -689,10 +642,9 @@ class Tasks(LifecycleCapability):
 
         # An unclean interruption: the previous attempt's isolate is gone. The
         # claim below replays the handler; the interrupted step is evidence.
-        interrupted = (
-            self._interrupted_step(run_id) if row["state"] == "running" else None
-        )
+        interrupted = None
         if row["state"] == "running":
+            interrupted = self._interrupted_step(run_id)
             self._emit(
                 "task:attempt:interrupted",
                 {
@@ -744,7 +696,6 @@ class Tasks(LifecycleCapability):
     async def _run_attempt(
         self, row: TaskRunRow, handler: TaskHandler, generation: str, step: ReplayStep
     ) -> None:
-        """Run one claimed attempt and record its outcome (generation-fenced)."""
         run_id = row["run_id"]
         task_input = deserialize_task_value(row["input"])
         try:
@@ -784,7 +735,6 @@ class Tasks(LifecycleCapability):
     async def _settle_thrown(
         self, row: TaskRunRow, generation: str, thrown: BaseException
     ) -> None:
-        """Record an attempt that didn't complete."""
         run_id = row["run_id"]
         if isinstance(thrown, AttemptSupersededError):
             return  # a newer attempt owns the run
@@ -875,8 +825,6 @@ class Tasks(LifecycleCapability):
             return None
         return StepInterruption(name=rows[0]["step_name"], attempt=rows[0]["attempt"])
 
-    # Settlement
-
     async def _settle_cancelled(
         self, run_id: str, generation: str | None, reason: str | None
     ) -> None:
@@ -961,8 +909,6 @@ class Tasks(LifecycleCapability):
         if not retain:
             self._store.delete_run(run_id)
         await self._sync_wake(run_id)
-
-    # Inspection and control
 
     def handle(self, definition: str) -> TaskHandle[Any, Any]:
         """Return a handle scoped to one definition's runs.
@@ -1056,8 +1002,6 @@ class Tasks(LifecycleCapability):
             return None
         return row_to_run(row)
 
-    # Plumbing
-
     def _emit(self, type: str, payload: dict[str, Any]) -> None:
         self.lifecycle.emit(type, payload)
 
@@ -1074,7 +1018,6 @@ class Tasks(LifecycleCapability):
 
 
 def _wake_payload(job: LifecycleJob) -> TaskWakePayload:
-    """Return a wake job's payload (the run id from the job id if malformed)."""
     raw = job.payload if isinstance(job.payload, dict) else {}
     run_id = raw.get("run_id")
     owner_path = raw.get("owner_path")
@@ -1089,7 +1032,6 @@ def _wake_payload(job: LifecycleJob) -> TaskWakePayload:
 
 
 def _owner(wake: TaskWakePayload) -> RouteAddress | None:
-    """Return the facet that owns a mirrored run, or ``None`` for a local run."""
     owner_path = wake["owner_path"]
     if owner_path is None:
         return None
@@ -1105,7 +1047,6 @@ def _states(status: Any) -> Sequence[Any]:
 
 
 def _collect_task_methods(target: object) -> dict[str, TaskHandler]:
-    """Return ``target``'s ``@task`` methods, bound, by name (nearest wins)."""
     found: dict[str, TaskHandler] = {}
     seen: set[str] = set()
     for cls in type(target).__mro__:

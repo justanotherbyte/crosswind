@@ -1,4 +1,4 @@
-"""Token estimates stamped on stored messages (upstream ``sessions/tokens.ts``).
+"""Port of upstream ``sessions/tokens.ts``.
 
 A heuristic: a real tokenizer would cost about 100 MB of heap. Nothing acts
 on it in phase 1 (compaction is deferred); it's reported by
@@ -32,7 +32,6 @@ MAX_ATTACHMENT_TOKENS = 20_000
 
 
 def estimate_string_tokens(text: str) -> int:
-    """Estimate ``text`` as the larger of characters / 4 and words * 1.3."""
     if not text:
         return 0
     chars = len(text) / CHARS_PER_TOKEN
@@ -41,7 +40,6 @@ def estimate_string_tokens(text: str) -> int:
 
 
 def estimate_message_tokens(messages: list[SessionMessage]) -> int:
-    """Estimate messages: a fixed charge each, plus their parts' text."""
     tokens = 0
     for message in messages:
         tokens += TOKENS_PER_MESSAGE
@@ -60,14 +58,12 @@ def estimate_message_tokens(messages: list[SessionMessage]) -> int:
 
 
 def estimate_attachment_tokens(media_type: str, size: int) -> int:
-    """Estimate an attachment: images flat, other files by size (capped)."""
     if media_type.startswith("image/"):
         return IMAGE_ATTACHMENT_TOKENS
     return min(math.ceil(size / 4), MAX_ATTACHMENT_TOKENS)
 
 
 def estimated_data_url_bytes(url: str) -> int:
-    """Return the decoded size of a ``data:`` URL's payload (0 otherwise)."""
     comma = url.find(",")
     if not url.startswith("data:") or comma < 0:
         return 0
@@ -76,7 +72,6 @@ def estimated_data_url_bytes(url: str) -> int:
 
 
 def estimate_row_tokens(message: SessionMessage) -> int:
-    """Return the estimate stamped on a stored message (inline ``data:`` files too)."""
     tokens = estimate_message_tokens([message])
     for part in message["parts"]:
         url = part.get("url")

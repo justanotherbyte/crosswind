@@ -1,5 +1,3 @@
-"""Types for the Queue capability."""
-
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,38 +46,25 @@ class QueueItem:
 
 
 type QueueCallback = Callable[[Any, QueueItem], Awaitable[Any]]
-"""A queue callback, called as ``callback(payload, item)``."""
-
 type QueueErrorHandler = Callable[[Exception], Awaitable[None]]
-"""Observes an item's terminal failure (after its last attempt)."""
 
 
 class QueueJobPayload(TypedDict):
-    """What a Queue job carries: the item payload and the Lifecycle owning it.
-
-    ``owner_path`` / ``owner_path_key`` are a facet's route address (``None``
-    for items pushed on the root itself).
-    """
-
     payload: JSONValue
+    # The owning facet's route address, or None for items pushed on the root.
     owner_path: str | None
     owner_path_key: str | None
 
 
 class WireQueueItem(TypedDict):
-    """A `QueueItem` as JSON, carried in routed messages."""
-
     id: str
     callback: str
     payload: JSONValue
     created_at_ms: int
     retry: str | None
-    """The retry policy as the job table stores it (JSON text)."""
 
 
 class PushMessage(TypedDict):
-    """A facet pushing an item onto the root's queue."""
-
     type: Literal["push"]
     callback: str
     payload: JSONValue
@@ -88,29 +73,21 @@ class PushMessage(TypedDict):
 
 
 class ByIdMessage(TypedDict):
-    """A facet reading or cancelling one of its items."""
-
     type: Literal["get", "cancel"]
     id: str
 
 
 class ListMessage(TypedDict):
-    """A facet listing its items."""
-
     type: Literal["list"]
     callback: str | None
 
 
 class CancelAllMessage(TypedDict):
-    """A facet cancelling its items."""
-
     type: Literal["cancel_all"]
     callback: str | None
 
 
 class DispatchMessage(TypedDict):
-    """The root handing a due item to the facet that owns it."""
-
     type: Literal["dispatch"]
     item: WireQueueItem
 
@@ -118,4 +95,3 @@ class DispatchMessage(TypedDict):
 type QueueRouteMessage = (
     PushMessage | ByIdMessage | ListMessage | CancelAllMessage | DispatchMessage
 )
-"""A Queue operation routed between Lifecycles."""

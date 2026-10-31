@@ -55,9 +55,6 @@ def types(events: list[LifecycleEvent]) -> list[str]:
     return [event.type for event in events]
 
 
-# Creating schedules
-
-
 def test_when_forms_produce_the_right_schedule() -> None:
     _, scheduler, recorder, _ = setup()
 
@@ -137,9 +134,6 @@ def test_recurring_schedules_deduplicate_by_default_one_shots_on_request() -> No
 
     asyncio.run(scenario())
     assert types(events).count("schedule:create") == 7
-
-
-# Running schedules
 
 
 def test_one_shots_run_in_host_context_then_disappear() -> None:
@@ -231,9 +225,6 @@ def test_one_shots_scheduled_during_startup_warn_once(
     assert caplog.text.count("during startup") == 1
 
 
-# Reading and cancelling
-
-
 def test_get_list_and_cancel() -> None:
     _, scheduler, recorder, events = setup()
 
@@ -251,9 +242,6 @@ def test_get_list_and_cancel() -> None:
 
     asyncio.run(scenario())
     assert events[-1].type == "schedule:cancel"
-
-
-# Facets
 
 
 def facet_setup() -> tuple[Lifecycle, Scheduler, Scheduler, Recorder]:
@@ -291,9 +279,6 @@ def test_facet_schedules_live_on_the_root_and_run_in_the_facet() -> None:
         assert await facet_scheduler.list() == []
 
     asyncio.run(scenario())
-
-
-# Agent
 
 
 class Reminders(Agent):

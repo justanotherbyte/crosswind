@@ -1,8 +1,7 @@
-"""Retrying an async operation with jittered exponential backoff.
+"""Port of upstream ``retries.ts`` and ``Agent.retry`` (``.design/utilities.md`` §7).
 
-Port of upstream ``retries.ts`` (``tryN``, ``jitterBackoff``,
-``validateRetryOptions``) and ``Agent.retry`` (``.design/utilities.md`` §7).
-Retries are in memory only; durable retries are schedules, queues, and Tasks.
+Covers ``tryN``, ``jitterBackoff`` and ``validateRetryOptions``. Retries are in
+memory only; durable retries are schedules, queues, and Tasks.
 """
 
 import asyncio
@@ -68,17 +67,9 @@ async def retry[T](
     return await run_with_retries(fn, options, should_retry=should_retry)
 
 
+# Callers run this when options are given, not when a retry first runs, so bad
+# values fail at the call that supplied them.
 def validate_retry_options(options: RetryOptions) -> None:
-    """Check retry options eagerly, so bad values fail where they're given.
-
-    Raises
-    ------
-    TypeError
-        If ``max_attempts`` isn't an ``int``, or a delay isn't a duration.
-    ValueError
-        If ``max_attempts`` is below 1, a delay isn't positive and finite, or
-        ``base_delay`` exceeds ``max_delay``.
-    """
     attempts = options.max_attempts
     if isinstance(attempts, bool) or not isinstance(attempts, int):
         raise TypeError(f"max_attempts must be an int, not {type(attempts).__name__}")
@@ -99,11 +90,7 @@ async def run_with_retries[T](
     *,
     should_retry: ShouldRetry | None = None,
 ) -> T:
-    """Run ``fn`` with already-validated retry options.
-
-    The engine behind `retry`, also used by the SDK's own dispatch retries
-    (upstream ``tryN``). See `retry` for the parameters and behavior.
-    """
+    # Upstream tryN. Expects options already checked by validate_retry_options.
     if inspect.iscoroutine(fn) or not callable(fn):
         raise TypeError("fn must be a function returning an awaitable, not a coroutine")
 
@@ -122,20 +109,7 @@ async def run_with_retries[T](
 
 
 def backoff_delay(attempt: int, options: RetryOptions) -> timedelta:
-    """Return a random wait before retrying after ``attempt`` ("full jitter").
-
-    Parameters
-    ----------
-    attempt
-        The 1-based attempt that just failed.
-    options
-        Supplies ``base_delay`` and ``max_delay``.
-
-    Returns
-    -------
-    timedelta
-        A uniformly random delay in ``[0, min(2 ** attempt * base, max))``.
-    """
+    # "Full jitter", as upstream's jitterBackoff.
     # 2.0 ** 1024 overflows a float; by then the window is capped at max anyway.
     upper = min(
         to_seconds(options.base_delay) * 2.0 ** min(attempt, 1023),

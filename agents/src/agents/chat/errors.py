@@ -1,5 +1,3 @@
-"""Errors raised by the chat layer."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("ChatStreamError",)

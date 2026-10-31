@@ -1,4 +1,4 @@
-"""Durable state (upstream ``state/``)."""
+"""Port of upstream ``state/``."""
 
 from .state import State
 from .types import StateSource

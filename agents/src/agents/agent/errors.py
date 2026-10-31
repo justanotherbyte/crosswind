@@ -1,5 +1,3 @@
-"""Exceptions raised by the Agent class."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("MCPNotEnabledError", "ReadonlyConnectionError")

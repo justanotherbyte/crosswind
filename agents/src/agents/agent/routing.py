@@ -1,8 +1,7 @@
-"""Getting a request or a call to the right agent instance.
+"""Port of upstream ``agent-routing.ts``, without ``props``.
 
-Port of upstream ``agent-routing.ts`` (``routeAgentRequest``,
-``getAgentByName``), without ``props`` (``.design/agent_api.md`` §1.14).
-Not a path router: requests match ``/{prefix}/{binding}/{name}/...``.
+See ``.design/agent_api.md`` §1.14. It isn't a path router. Requests match
+``/{prefix}/{binding}/{name}/...``.
 """
 
 import asyncio
@@ -105,7 +104,7 @@ async def route_agent_request(
     if parts[: len(prefix_parts)] != prefix_parts or len(parts) < len(prefix_parts) + 2:
         return None
     agent_segment, name = parts[len(prefix_parts)], parts[len(prefix_parts) + 1]
-    binding = _bindings(env).get(agent_segment)
+    binding = _durable_object_bindings(env).get(agent_segment)
     if binding is None:
         _log.error(
             "The URL %s with namespace %r and name %r does not match any "
@@ -118,9 +117,10 @@ async def route_agent_request(
     class_name, namespace = binding
 
     cors_headers = _cors_headers(cors)
-    upgrade = is_upgrade_request(request)
     if request.method == "OPTIONS" and cors_headers is not None:
         return Response(None, headers=cors_headers)
+
+    upgrade = is_upgrade_request(request)
 
     def with_cors(response: Response) -> Response:
         if cors_headers is None or upgrade:
@@ -137,9 +137,8 @@ async def route_agent_request(
             request = outcome
 
     stub = _stub(namespace, name, jurisdiction, location_hint)
-    forwarded = request
     response = await _with_routing_retry(
-        lambda: stub.fetch(_ffi.clone_request(forwarded)),
+        lambda: stub.fetch(_ffi.clone_request(request)),
         name=name,
         class_name=class_name,
         options=routing_retry,
@@ -239,8 +238,7 @@ async def get_sub_agent_by_name(parent: Any, cls: type, name: str) -> SubAgentSt
     return SubAgentStub(parent, cls.__name__, name)
 
 
-def _bindings(env: Any) -> dict[str, tuple[str, Any]]:
-    """Return the env's Durable Object bindings by kebab-case name."""
+def _durable_object_bindings(env: Any) -> dict[str, tuple[str, Any]]:
     cached = _namespaces.get(env)
     if cached is not None:
         return cached
@@ -271,6 +269,7 @@ def _cors_headers(cors: bool | Mapping[str, str]) -> dict[str, str] | None:
     return dict(cors)
 
 
+# Port of upstream retryDurableObjectOperation, including its backoff.
 async def _with_routing_retry[T](
     operation: Callable[[], Awaitable[T]],
     *,
@@ -278,15 +277,10 @@ async def _with_routing_retry[T](
     class_name: str | None,
     options: RoutingRetry,
 ) -> T:
-    """Run ``operation``, retrying errors the platform marks transient.
-
-    Port of upstream ``retryDurableObjectOperation``, including its backoff
-    (a random wait up to ``min(max_delay, base_delay * 2 ** (attempt - 1))``).
-    """
     if options is False:
         return await operation()
     resolved = options if options is not None else RoutingRetryOptions()
-    _validate(resolved)
+    _validate_retry_options(resolved)
     attempt = 1
     while True:
         try:
@@ -324,15 +318,7 @@ def _is_transient(error: Exception) -> bool:
     )
 
 
-def _validate(options: RoutingRetryOptions) -> None:
-    """Check routing retry options where they're given.
-
-    Raises
-    ------
-    ValueError
-        If ``max_attempts`` is below 1, a delay isn't positive and finite, or
-        ``base_delay`` exceeds ``max_delay``.
-    """
+def _validate_retry_options(options: RoutingRetryOptions) -> None:
     if options.max_attempts < 1:
         raise ValueError("routing_retry.max_attempts must be >= 1")
     base, maximum = to_seconds(options.base_delay), to_seconds(options.max_delay)

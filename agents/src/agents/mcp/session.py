@@ -1,11 +1,8 @@
-"""JSON-RPC over Streamable HTTP with one server, in both protocol eras.
+"""There's no background task: each request is one POST.
 
-A session negotiates once (``connect``), then every request goes through
-`McpSession.request`, which stamps the era's envelope and headers, attaches
-auth, and reads the JSON or SSE response as it arrives. There's no
-background task: each request is one POST (``.design/mcp_engine.md`` §4).
-The wire facts are the ``mcp`` 2.3.0 SDK's (``client/_probe.py``,
-``client/session.py``, ``client/streamable_http.py``, ``shared/inbound.py``).
+See ``.design/mcp_engine.md`` §4. The wire facts are the ``mcp`` 2.3.0 SDK's
+(``client/_probe.py``, ``client/session.py``, ``client/streamable_http.py``,
+``shared/inbound.py``).
 """
 
 import asyncio
@@ -15,6 +12,7 @@ import re
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from typing import Any, Protocol
 
+from ..core.encoding import to_json
 from ..core.timing import to_seconds
 from ..core.types import Duration
 from .errors import (
@@ -41,10 +39,9 @@ __all__ = (
     "SessionAuth",
 )
 
+# Oldest first: [-1] is the latest, and oauth_flow compares versions by index.
 HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
-"""Versions negotiated with the ``initialize`` handshake, oldest first."""
 MODERN_VERSIONS = ("2026-07-28",)
-"""Versions that use the per-request envelope and ``server/discover``."""
 LATEST_HANDSHAKE_VERSION = HANDSHAKE_VERSIONS[-1]
 
 # JSON-RPC error codes (mcp_types/jsonrpc.py).
@@ -64,53 +61,27 @@ _NAME_BEARING = {"tools/call": "name", "prompts/get": "name", "resources/read": 
 _HEADER_SAFE = re.compile(r"[\x20-\x7e]*")
 _BASE64_SENTINEL = re.compile(r"=\?base64\?.*\?=")
 
-_DISCOVER_TIMEOUT = 10
 _DEFAULT_TIMEOUT = 60
 _GET_RECONNECT_ATTEMPTS = 2
 _GET_RECONNECT_DELAY_MS = 1000
 
 
 class SessionAuth(Protocol):
-    """What a session needs from OAuth (`agents.mcp.oauth_flow.OAuthFlow`)."""
+    async def authorization(self) -> str | None: ...
 
-    async def authorization(self) -> str | None:
-        """Return the ``Authorization`` header value, if there are tokens."""
-        ...
-
+    # Returning means the tokens were refreshed (only allowed with
+    # allow_refresh), so the request is retried; otherwise this raises
+    # MCPAuthorizationRequiredError.
     async def on_unauthorized(
         self,
         headers: Mapping[str, str],
         *,
         protocol_version: str | None,
         allow_refresh: bool,
-    ) -> None:
-        """Handle a 401, by refreshing the tokens or by authorizing.
-
-        Return after a refresh (only when ``allow_refresh``), so the request
-        is retried. Otherwise raise ``MCPAuthorizationRequiredError``.
-        """
-        ...
+    ) -> None: ...
 
 
 class McpSession:
-    """One negotiated conversation with one server.
-
-    Parameters
-    ----------
-    url
-        The server's endpoint.
-    http
-        The transport every request goes through.
-    client_info
-        This client's ``{"name": ..., "version": ...}``.
-    headers
-        Extra headers sent on every request.
-    auth
-        OAuth, when the server may need it.
-    on_notification
-        Called with each server notification's method and params.
-    """
-
     def __init__(
         self,
         url: str,
@@ -129,33 +100,25 @@ class McpSession:
         self._on_notification = on_notification
         self._next_id = 0
         self.protocol_version: str | None = None
-        """The negotiated version, once connected."""
         self.session_id: str | None = None
-        """The ``Mcp-Session-Id`` the server assigned (handshake era)."""
         self._result: dict[str, Any] = {}  # the initialize or discover result
         self._tool_headers: dict[str, dict[tuple[str, ...], str]] = {}
         self._retry_ms = _GET_RECONNECT_DELAY_MS
 
-    # Negotiated state
-
     @property
     def is_modern(self) -> bool:
-        """``bool``: whether the 2026-07-28 per-request envelope is in use."""
         return self.protocol_version in MODERN_VERSIONS
 
     @property
     def capabilities(self) -> dict[str, Any]:
-        """``dict``: the server's capabilities."""
         return self._result.get("capabilities") or {}
 
     @property
     def instructions(self) -> str | None:
-        """``str | None``: the server's instructions for the model."""
         return self._result.get("instructions")
 
     @property
     def snapshot(self) -> SessionSnapshot | None:
-        """``SessionSnapshot | None``: what restoring this session needs."""
         if self.protocol_version is None:
             return None
         return SessionSnapshot(
@@ -164,28 +127,9 @@ class McpSession:
             discover_result=self._result if self.is_modern else None,
         )
 
-    # Negotiation
-
+    # client/_probe.py: anything short of positive evidence of a modern
+    # server falls back to the initialize handshake.
     async def connect(self, *, prior: SessionSnapshot | None = None) -> None:
-        """Negotiate the era (``client/_probe.py``), or adopt ``prior``.
-
-        A 2026-07-28 ``prior`` with its discover result is adopted with no
-        request. Otherwise ``server/discover`` is probed and the
-        ``initialize`` handshake is the fallback for anything that isn't
-        positive evidence of a modern server.
-
-        Raises
-        ------
-        MCPRpcError
-            If the server is modern-only with no version in common, or the
-            handshake fails.
-        MCPProtocolError
-            If the server picks a version this client doesn't speak.
-        MCPTransportError
-            If the server can't be reached.
-        MCPAuthorizationRequiredError
-            If the server needs OAuth first.
-        """
         if (
             prior is not None
             and prior.protocol_version in MODERN_VERSIONS
@@ -233,7 +177,7 @@ class McpSession:
         }
         headers = {"mcp-protocol-version": version, "mcp-method": "server/discover"}
         result = await self._call(
-            "server/discover", params, headers=headers, timeout=_DISCOVER_TIMEOUT
+            "server/discover", params, headers=headers, timeout=10
         )
         if not isinstance(result.get("capabilities"), dict):
             raise MCPRpcError(_INVALID_REQUEST, "unparseable server/discover result")
@@ -283,8 +227,6 @@ class McpSession:
         self.session_id = None
         self._result = result
 
-    # The choke point
-
     async def request(
         self,
         method: str,
@@ -292,21 +234,6 @@ class McpSession:
         *,
         timeout: Duration | None = _DEFAULT_TIMEOUT,
     ) -> dict[str, Any]:
-        """Send a request in the negotiated era and return its result.
-
-        Raises
-        ------
-        MCPRpcError
-            If the server answers with an error, or the request times out
-            (code -32001).
-        MCPProtocolError
-            If the server asks for input this client can't give
-            (``input_required``).
-        MCPTransportError
-            If the server can't be reached.
-        MCPAuthorizationRequiredError
-            If the server needs OAuth first.
-        """
         params, headers = self._stamp(method, dict(params or {}))
         try:
             result = await self._call(method, params, headers=headers, timeout=timeout)
@@ -321,18 +248,10 @@ class McpSession:
             raise MCPProtocolError(f"{method} needs input; elicitation isn't supported")
         return result
 
+    # Only the handshake era has client notifications, so no envelope is stamped.
     async def notify(
         self, method: str, params: Mapping[str, Any] | None = None
     ) -> None:
-        """Send a notification (the handshake era; 2026-07-28 has none).
-
-        Raises
-        ------
-        MCPRpcError
-            If the server rejects it.
-        MCPTransportError
-            If the server can't be reached.
-        """
         message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
         if params:
             message["params"] = dict(params)
@@ -406,13 +325,13 @@ class McpSession:
         headers: Mapping[str, str],
         expect_reply: bool,
     ) -> dict[str, Any] | None:
-        # A 401 is retried once after a refresh; a second one must authorize.
+        # Retry a 401 once after a refresh; a second one must authorize.
         for allow_refresh in (True, False):
             request = HttpRequest(
                 method="POST",
                 url=self.url,
                 headers=await self._request_headers(headers),
-                body=json.dumps(message, separators=(",", ":")),
+                body=to_json(message),
             )
             async with send_within_origin(self._http, request) as response:
                 if response.status == 401:
@@ -473,7 +392,7 @@ class McpSession:
         if content_type.startswith("application/json"):
             return next(_messages(await read_body(response)), None)
         if content_type.startswith("text/event-stream"):
-            return await self._read_stream(response.chunks(), message["id"])
+            return await self._read_stream_until_reply(response.chunks(), message["id"])
         raise MCPRpcError(_INVALID_REQUEST, f"Unexpected content type {content_type!r}")
 
     async def _status_error(self, response: HttpResponse) -> MCPRpcError:
@@ -503,21 +422,17 @@ class McpSession:
             _INTERNAL_ERROR, f"Server returned an error response ({response.status})"
         )
 
-    async def _read_stream(
+    async def _read_stream_until_reply(
         self, chunks: AsyncIterator[bytes], request_id: int | None
     ) -> dict[str, Any] | None:
-        """Dispatch a stream's messages until the reply to ``request_id``."""
         async for event in iter_events(chunks):
             if event.event != "message" or not event.data:
                 continue  # a priming event
             for incoming in _messages(event.data):
-                if "method" not in incoming:
-                    if incoming.get("id") == request_id:
-                        return incoming
-                elif "id" in incoming:
-                    await self._answer(incoming)
-                else:
-                    self._notify(incoming)
+                if "method" in incoming:
+                    await self._dispatch_unsolicited(incoming)
+                elif incoming.get("id") == request_id:
+                    return incoming
         return None
 
     def _notify(self, notification: Mapping[str, Any]) -> None:
@@ -525,32 +440,14 @@ class McpSession:
 
     async def _answer(self, request: Mapping[str, Any]) -> None:
         # Server-initiated requests (handshake era). Only ping is supported.
+        reply: dict[str, Any] = {"jsonrpc": "2.0", "id": request["id"]}
         if request["method"] == "ping":
-            reply: dict[str, Any] = {
-                "jsonrpc": "2.0",
-                "id": request["id"],
-                "result": {},
-            }
+            reply["result"] = {}
         else:
-            reply = {
-                "jsonrpc": "2.0",
-                "id": request["id"],
-                "error": {"code": _METHOD_NOT_FOUND, "message": "Method not found"},
-            }
+            reply["error"] = {"code": _METHOD_NOT_FOUND, "message": "Method not found"}
         await self._post(reply, headers=self._era_headers(), expect_reply=False)
 
-    # Endpoints
-
     async def list_all(self, method: str, key: str) -> list[dict[str, Any]]:
-        """Return every item of a paginated list (``tools/list`` and ``tools``, ...).
-
-        Pages are followed until ``nextCursor`` runs out or repeats.
-
-        Raises
-        ------
-        MCPRpcError, MCPTransportError, MCPAuthorizationRequiredError
-            As `request`.
-        """
         items: list[dict[str, Any]] = []
         seen: set[str] = set()
         cursor = None
@@ -596,37 +493,21 @@ class McpSession:
         *,
         timeout: Duration | None = _DEFAULT_TIMEOUT,
     ) -> dict[str, Any]:
-        """Call a tool and return its raw result."""
         params = {"name": name, "arguments": dict(arguments)}
         return await self.request("tools/call", params, timeout=timeout)
 
     async def get_prompt(
         self, name: str, arguments: Mapping[str, str] | None
     ) -> dict[str, Any]:
-        """Render a prompt and return its raw result."""
         params: dict[str, Any] = {"name": name}
         if arguments:
             params["arguments"] = dict(arguments)
         return await self.request("prompts/get", params)
 
     async def read_resource(self, uri: str) -> dict[str, Any]:
-        """Read a resource and return its raw result."""
         return await self.request("resources/read", {"uri": uri})
 
-    # Listening and closing
-
     async def listen(self) -> None:
-        """Receive notifications outside requests, until cancelled.
-
-        The handshake era opens the GET event stream; 2026-07-28 opens a
-        ``subscriptions/listen`` stream for the ``listChanged`` capabilities
-        the server advertises. Returns when the server offers no stream.
-
-        Raises
-        ------
-        MCPTransportError, MCPRpcError
-            If the stream can't be opened or reopened.
-        """
         if self.is_modern:
             await self._listen_modern()
         elif self.session_id is not None:
@@ -674,7 +555,7 @@ class McpSession:
             if response.status >= 400:
                 raise await self._status_error(response)
             async for event in iter_events(response.chunks()):
-                self._retry_ms = event.retry or self._retry_ms
+                self._retry_ms = event.retry_ms or self._retry_ms
                 received = True
                 if event.data:
                     for incoming in _messages(event.data):
@@ -690,13 +571,6 @@ class McpSession:
             self._notify(incoming)
 
     async def close(self) -> None:
-        """End the session: a ``DELETE`` when the server assigned one.
-
-        Raises
-        ------
-        MCPTransportError
-            If the server can't be reached.
-        """
         if self.session_id is None:
             return
         headers = await self._request_headers(self._era_headers())
@@ -707,7 +581,6 @@ class McpSession:
 
 
 _SESSION_EXPIRED = "session-expired"
-"""``MCPRpcError.data`` for a 404 on a request that carried a session id."""
 
 
 def _messages(data: str) -> Iterator[dict[str, Any]]:

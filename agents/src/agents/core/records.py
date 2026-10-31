@@ -1,8 +1,7 @@
-"""Declaring record fields that have a different name on the wire.
+"""Record fields with a different wire name (``.design/utilities.md`` §5).
 
-``.design/utilities.md`` §5: SDK records are dataclasses with snake_case
-attributes; a field whose wire (JSON) name differs is declared with `wire`,
-and codecs read the name from the field's metadata.
+SDK records are dataclasses with snake_case attributes; codecs read a field's
+wire (JSON) name from its metadata.
 """
 
 from dataclasses import MISSING, field
@@ -12,9 +11,4 @@ __all__ = ("wire",)
 
 
 def wire(name: str, default: Any = MISSING) -> Any:
-    """Declare a field whose wire name is ``name``.
-
-    Without ``default`` the field stays required; ``wire(name, None)`` makes
-    it optional.
-    """
     return field(default=default, metadata={"wire": name})

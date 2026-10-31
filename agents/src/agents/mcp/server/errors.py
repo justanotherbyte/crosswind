@@ -1,5 +1,3 @@
-"""Exceptions raised when hosting an MCP server."""
-
 from ..errors import MCPError
 
 __all__ = ("MCPServerConfigError",)

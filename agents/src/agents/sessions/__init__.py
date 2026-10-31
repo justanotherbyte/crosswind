@@ -1,4 +1,4 @@
-"""Durable conversation history (upstream ``agents/sessions``, phase 1)."""
+"""Port of upstream ``agents/sessions`` (phase 1)."""
 
 from .sessions import Session, Sessions
 from .types import (
