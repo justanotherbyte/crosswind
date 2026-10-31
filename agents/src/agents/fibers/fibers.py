@@ -19,12 +19,13 @@ import logging
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from contextvars import ContextVar
+from dataclasses import fields
 from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, cast, override
 
 from ..core.sql import SqlError
-from ..core.timing import epoch_ms, from_epoch_ms, now_ms, to_seconds
+from ..core.timing import epoch_ms, from_epoch_ms, now_ms, to_milliseconds, to_seconds
 from ..core.types import Duration, JSONValue
 from ..lifecycle.capability import LifecycleCapability
 from ..lifecycle.types import (
@@ -36,7 +37,7 @@ from ..lifecycle.types import (
 )
 from .errors import FiberConflictError, FiberNotFoundError
 from .keep_alive import KeepAlive
-from .store import LIVE, TERMINAL, FiberStore, inspection_from_row
+from .store import LIVE, TERMINAL, FiberStore, inspection_from_row, metadata_from_json
 from .types import (
     FiberAborted,
     FiberCompleted,
@@ -137,9 +138,9 @@ class Fibers(LifecycleCapability):
         self._on_recovered = on_recovered
         self._internal_recovery = internal_recovery
         self._hook_timeout = to_seconds(hook_timeout)
-        self._scan_deadline_ms = to_seconds(scan_deadline) * 1000
-        self._max_age_ms = to_seconds(max_age) * 1000 if max_age is not None else None
-        self._interval_ms = int(to_seconds(housekeeping_interval) * 1000)
+        self._scan_deadline_ms = to_milliseconds(scan_deadline)
+        self._max_age_ms = to_milliseconds(max_age) if max_age is not None else None
+        self._interval_ms = int(to_milliseconds(housekeeping_interval))
         self._store_instance: FiberStore | None = None
         # Fibers running in this isolate; their rows aren't interrupted.
         self._active: set[str] = set()
@@ -153,8 +154,6 @@ class Fibers(LifecycleCapability):
         if self._store_instance is None:
             self._store_instance = FiberStore(self.lifecycle.sql)
         return self._store_instance
-
-    # Plain fibers
 
     async def run[T](self, name: str, fn: Callable[[FiberContext], Awaitable[T]]) -> T:
         """Run ``fn`` as a fiber and return its result (errors propagate)."""
@@ -171,8 +170,6 @@ class Fibers(LifecycleCapability):
         For chat turns, whose recovery snapshot wraps the user's.
         """
         return await self._run(_new_id(), name, fn, wrap_stash=wrap)
-
-    # Managed fibers
 
     async def start(
         self,
@@ -199,6 +196,7 @@ class Fibers(LifecycleCapability):
             raise ValueError("fiber_id must not be blank")
         if idempotency_key is not None and not idempotency_key.strip():
             raise ValueError("idempotency_key must not be blank")
+
         store = self._store
         id = fiber_id if fiber_id is not None else _new_id()
         by_id = store.get(id)
@@ -216,13 +214,14 @@ class Fibers(LifecycleCapability):
             return _started(inspection_from_row(existing), accepted=False)
 
         store.insert_pending(id, name, idempotency_key, metadata)
-        row = store.get(id)
-        assert row is not None
         execution = asyncio.ensure_future(self._execute(id, name, fn))
         self._executions[id] = execution
         execution.add_done_callback(partial(self._execution_done, id))
         if wait_for_completion:
             return _started(await self._wait(id), accepted=True)
+
+        row = store.get(id)
+        assert row is not None
         return _started(inspection_from_row(row), accepted=True)
 
     def inspect(self, fiber_id: str) -> FiberInspection | None:
@@ -297,8 +296,6 @@ class Fibers(LifecycleCapability):
         bounded = min(max(limit if limit is not None else 100, 1), 500)
         before = epoch_ms(settled_before) if settled_before is not None else None
         return self._store.delete_settled(terminal, before, bounded)
-
-    # Recovery
 
     async def recover(self) -> None:
         """Recover interrupted fibers: hand each one to the recovery hook.
@@ -397,12 +394,10 @@ class Fibers(LifecycleCapability):
                 self._notify(id)
         finally:
             self._scanning = False
-            if progress:
+            if progress or not self._has_pending_recovery():
                 self._no_progress_scans = 0
-            elif self._has_pending_recovery():
-                self._no_progress_scans += 1
             else:
-                self._no_progress_scans = 0
+                self._no_progress_scans += 1
 
     async def recover_on_wake(self) -> None:
         """Recover what a dead isolate left, then arm housekeeping.
@@ -414,8 +409,6 @@ class Fibers(LifecycleCapability):
         """
         await self.recover()
         await self._sync_housekeeping()
-
-    # Lifecycle hooks
 
     @override
     async def on_start(self) -> None:
@@ -465,8 +458,6 @@ class Fibers(LifecycleCapability):
         """Forget the root's index entries for a deleted facet subtree (internal)."""
         self._store.forget_facets_under(prefix)
         await self._sync_housekeeping()
-
-    # Running
 
     async def _run[T](
         self,
@@ -653,8 +644,6 @@ class Fibers(LifecycleCapability):
                 )
         self._notify(fiber_id)
 
-    # Waiting
-
     async def _wait(self, fiber_id: str) -> FiberInspection:
         row = self._store.get(fiber_id)
         if row is not None and row["status"] in LIVE:
@@ -683,8 +672,6 @@ class Fibers(LifecycleCapability):
         for waiter in self._waiters.pop(fiber_id, []):
             if not waiter.done():
                 waiter.set_result(None)
-
-    # Recovery hooks
 
     async def _run_hook(
         self, context: FiberRecoveryContext, managed: FiberLedgerRow | None
@@ -750,8 +737,6 @@ class Fibers(LifecycleCapability):
                 f"for {context.name!r} ({context.id})"
             ) from None
 
-    # Housekeeping (the root owns the alarm)
-
     def _has_pending_recovery(self) -> bool:
         if any(id not in self._active for id in self._store.run_ids()):
             return True
@@ -801,8 +786,6 @@ class Fibers(LifecycleCapability):
             # 0 rows left, or False: the facet was deleted (and cleaned up).
             if not remaining:
                 self._store.forget_facet(key)
-
-    # Events
 
     def _past_deadline(self, started: int) -> bool:
         return (
@@ -868,8 +851,7 @@ def _statuses(
 def _add_ledger_fields(context: FiberRecoveryContext, record: FiberLedgerRow) -> None:
     context.status = "interrupted"
     context.idempotency_key = record["idempotency_key"]
-    metadata = json.loads(record["metadata_json"]) if record["metadata_json"] else None
-    context.metadata = metadata if isinstance(metadata, dict) else None
+    context.metadata = metadata_from_json(record["metadata_json"])
 
 
 def _recovery_payload(
@@ -887,16 +869,7 @@ def _recovery_payload(
 
 
 def _started(inspection: FiberInspection, *, accepted: bool) -> StartFiberResult:
-    return StartFiberResult(
-        fiber_id=inspection.fiber_id,
-        name=inspection.name,
-        status=inspection.status,
-        created_at=inspection.created_at,
-        idempotency_key=inspection.idempotency_key,
-        snapshot=inspection.snapshot,
-        error=inspection.error,
-        metadata=inspection.metadata,
-        started_at=inspection.started_at,
-        settled_at=inspection.settled_at,
-        accepted=accepted,
-    )
+    values = {
+        field.name: getattr(inspection, field.name) for field in fields(inspection)
+    }
+    return StartFiberResult(**values, accepted=accepted)

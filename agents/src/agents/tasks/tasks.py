@@ -83,7 +83,6 @@ _WAKE_JOB_FN = "wake"
 # retries the alarm, while the run's claim deadline stays the durable wake.
 _WAKE_JOB_RETRY = RetryOptions(max_attempts=1)
 _MAX_DEFINITION_NAME_LENGTH = 256
-_LIVE = ("pending", "waiting", "running")
 _TERMINAL: tuple[TerminalTaskState, ...] = ("completed", "failed", "cancelled")
 
 type _StartMode = Literal["warm", "queued", "attached"]
@@ -153,8 +152,6 @@ class Tasks(LifecycleCapability):
     def _claim_timeout_ms(self) -> int:
         return self._defaults.timeout_ms + _CLAIM_SLACK_MS
 
-    # Definitions
-
     def _resolve(self, name: str) -> TaskHandler | None:
         return self._definitions.get(name) or self._registered.get(name)
 
@@ -186,8 +183,6 @@ class Tasks(LifecycleCapability):
         if name in self._definitions or name in self._registered:
             raise ValueError(f"Task definition {name!r} is already registered")
         self._registered[name] = handler
-
-    # Starting runs
 
     async def run(
         self,
@@ -368,8 +363,6 @@ class Tasks(LifecycleCapability):
             created_at=from_epoch_ms(existing["created_at"]),
         )
 
-    # Lifecycle capability hooks
-
     @override
     async def on_start(self) -> None:
         """Create the tables once, then make every live run's wake sane."""
@@ -396,9 +389,9 @@ class Tasks(LifecycleCapability):
     async def on_memory_limit(self, context: MemoryLimitContext) -> None:
         """Contain a run whose wake hit the alarm memory-limit breaker.
 
-        The claim is stripped and the deadline pushed to the backoff, so the
-        run keeps its state (a replay still sees ``step.interrupted``) and
-        startup won't make it due again early; a sealed strike fails it.
+        Strips the claim and pushes the deadline to the backoff, so the run
+        keeps its state (a replay still sees ``step.interrupted``) and startup
+        won't make it due again early. A sealed strike fails the run.
         """
         job = context.executing
         if job is None or job.capability != self.capability_id:
@@ -453,8 +446,6 @@ class Tasks(LifecycleCapability):
             run_id,
         )
         await self._sync_wake(run_id)
-
-    # Dispatch and wakes
 
     async def _dispatch_run(self, run_id: str) -> JobOutcome:
         """Drive one due run to its next durable boundary.
@@ -570,7 +561,7 @@ class Tasks(LifecycleCapability):
     async def _cleanup_route_prefix(self, prefix: str) -> None:
         """Cancel the root's mirrors of runs owned by a deleted facet subtree.
 
-        The runs themselves are deleted with the facets' storage (internal).
+        The runs themselves go with the facets' storage (internal).
         """
         for job in self.lifecycle.jobs.list():
             owner = _owner(_wake_payload(job))
@@ -664,8 +655,6 @@ class Tasks(LifecycleCapability):
             now,
         )
 
-    # Execution
-
     async def _execute_run(self, run_id: str) -> None:
         """Claim one due run and drive an attempt to its next durable boundary."""
         if run_id in self._active:
@@ -673,10 +662,10 @@ class Tasks(LifecycleCapability):
         row = self._store.get_run(run_id)
         if row is None or row["state"] in _TERMINAL:
             return
-        now = now_ms()
         if row["cancel_requested"] == 1:
             await self._settle_cancelled(run_id, None, row["cancel_reason"])
             return
+        now = now_ms()
         if row["next_at"] is not None and row["next_at"] > now:
             return
         handler = self._resolve(row["definition"])
@@ -689,10 +678,9 @@ class Tasks(LifecycleCapability):
 
         # An unclean interruption: the previous attempt's isolate is gone. The
         # claim below replays the handler; the interrupted step is evidence.
-        interrupted = (
-            self._interrupted_step(run_id) if row["state"] == "running" else None
-        )
+        interrupted = None
         if row["state"] == "running":
+            interrupted = self._interrupted_step(run_id)
             self._emit(
                 "task:attempt:interrupted",
                 {
@@ -875,8 +863,6 @@ class Tasks(LifecycleCapability):
             return None
         return StepInterruption(name=rows[0]["step_name"], attempt=rows[0]["attempt"])
 
-    # Settlement
-
     async def _settle_cancelled(
         self, run_id: str, generation: str | None, reason: str | None
     ) -> None:
@@ -961,8 +947,6 @@ class Tasks(LifecycleCapability):
         if not retain:
             self._store.delete_run(run_id)
         await self._sync_wake(run_id)
-
-    # Inspection and control
 
     def handle(self, definition: str) -> TaskHandle[Any, Any]:
         """Return a handle scoped to one definition's runs.
@@ -1055,8 +1039,6 @@ class Tasks(LifecycleCapability):
         if row is None or (definition is not None and row["definition"] != definition):
             return None
         return row_to_run(row)
-
-    # Plumbing
 
     def _emit(self, type: str, payload: dict[str, Any]) -> None:
         self.lifecycle.emit(type, payload)

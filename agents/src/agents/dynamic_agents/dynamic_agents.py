@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import AbstractContextManager, suppress
+from contextlib import suppress
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import partial
@@ -27,15 +27,17 @@ from .. import _ffi
 from ..core.naming import camel_case_to_kebab_case
 from ..lifecycle.capability import LifecycleCapability
 from ..lifecycle.host_context import run_in_host_context
+from ..lifecycle.lifecycle import is_upgrade_request
 from ..lifecycle.types import RouteAddress, RouteEnvelope
 from ..websockets.connection import Connection
+from ..websockets.websockets import _send
 from .connections import (
     DELETED_FLAG,
     OUTER_URL_FLAG,
     TAGS_FLAG,
     VirtualConnection,
     apply_forwarded_state,
-    forwarded_state,
+    forwarded_meta,
 )
 from .errors import (
     InvalidSubAgentNameError,
@@ -141,8 +143,6 @@ class SubAgentsEngine(LifecycleCapability):
         self._tails: dict[str, asyncio.Task[None]] = {}
         self._background: set[asyncio.Task[Any]] = set()
 
-    # Identity
-
     @property
     def registry(self) -> SubAgentRegistry:
         """The sub-agents this agent created."""
@@ -210,8 +210,6 @@ class SubAgentsEngine(LifecycleCapability):
         self.parent_path = parent_path
         self._host.lifecycle._set_name(name)
 
-    # Creating and reaching sub-agents
-
     async def resolve(self, class_name: str, name: str) -> Any:
         """Return sub-agent ``class_name``/``name``, creating it on first use.
 
@@ -223,56 +221,54 @@ class SubAgentsEngine(LifecycleCapability):
         RuntimeError
             If the root class isn't exported as a Durable Object namespace.
         """
-        ctx = self._host.ctx
         if camel_case_to_kebab_case(class_name) == SUB_PREFIX:
             raise ValueError(
                 f"Sub-agent class {class_name!r} kebab-cases to {SUB_PREFIX!r}, "
                 "the reserved URL separator; rename it (e.g. SubThing)"
             )
-        if class_name not in _ffi.export_names(ctx):
+        if class_name not in _ffi.export_names(self._host.ctx):
             raise UnknownSubAgentClassError(
                 f"Sub-agent class {class_name!r} isn't exported from the Worker "
                 "module under that name"
             )
         if "\0" in name:
             raise InvalidSubAgentNameError("Sub-agent names can't contain NUL (\\0)")
-        root_class = self._root_class()
         child_path = [*self.self_path, AgentPathStep(class_name=class_name, name=name)]
         existing = self.registry.identity(class_name, name)
         identity = existing if existing is not None else identity_name(name, child_path)
-        stub = _ffi.facet_get(
-            ctx, _facet_key(class_name, name), class_name, root_class, identity
-        )
         # Recorded before the handshake, so a child that's initialized isn't
         # left unregistered if this parent is interrupted afterwards.
         self.registry.record(class_name, name, identity)
         try:
-            await _ffi.call_rpc(
-                stub, "_cf_init_as_facet", name, path_to_json(self.self_path), identity
-            )
+            return await self._open_facet(class_name, name, identity)
         except Exception:
             if existing is None:
                 self.registry.forget(class_name, name)
             raise
-        return stub
 
     async def _resolve_existing(self, class_name: str, name: str) -> Any | None:
         """Return a recorded sub-agent, or ``None``; never creates one."""
         identity = self.registry.identity(class_name, name)
         if identity is None:
             return None
-        ctx = self._host.ctx
-        stub = _ffi.facet_get(
-            ctx, _facet_key(class_name, name), class_name, self._root_class(), identity
-        )
         try:
-            await _ffi.call_rpc(
-                stub, "_cf_init_as_facet", name, path_to_json(self.self_path), identity
-            )
+            return await self._open_facet(class_name, name, identity)
         except Exception:
             if not self.registry.has(class_name, name):
                 return None  # deleted mid-handshake
             raise
+
+    async def _open_facet(self, class_name: str, name: str, identity: str) -> Any:
+        stub = _ffi.facet_get(
+            self._host.ctx,
+            _facet_key(class_name, name),
+            class_name,
+            self._root_class(),
+            identity,
+        )
+        await _ffi.call_rpc(
+            stub, "_cf_init_as_facet", name, path_to_json(self.self_path), identity
+        )
         return stub
 
     def _root_class(self) -> str:
@@ -307,12 +303,7 @@ class SubAgentsEngine(LifecycleCapability):
         await self._close_connections_for(child_path)
         _ffi.facet_delete(self._host.ctx, _facet_key(class_name, name))
         self.registry.forget(class_name, name)
-        if self.is_facet:
-            await _ffi.call_rpc(
-                self._root_stub(), "_cf_cleanup_facet_prefix", path_to_json(child_path)
-            )
-        else:
-            await self.cleanup_prefix(child_path)
+        await self._cleanup_routed_work(child_path)
 
     async def destroy_self(self) -> None:
         """Ask the root to delete this facet (``destroy()`` on a sub-agent)."""
@@ -357,7 +348,13 @@ class SubAgentsEngine(LifecycleCapability):
         await self._host.lifecycle.start()
         await self._host._cleanup_route_prefix(path_key(path))
 
-    # Lifecycle routing
+    async def _cleanup_routed_work(self, path: list[AgentPathStep]) -> None:
+        if self.is_facet:
+            await _ffi.call_rpc(
+                self._root_stub(), "_cf_cleanup_facet_prefix", path_to_json(path)
+            )
+        else:
+            await self.cleanup_prefix(path)
 
     async def route_to_root(self, envelope: RouteEnvelope) -> Any:
         """Deliver a routed message to the same capability on the root."""
@@ -400,21 +397,13 @@ class SubAgentsEngine(LifecycleCapability):
             return await self._host.lifecycle.route(envelope)
         step = target_path[len(own)]
         if not self.registry.has(step.class_name, step.name):
-            stale = target_path[: len(own) + 1]
-            if self.is_facet:
-                await _ffi.call_rpc(
-                    self._root_stub(), "_cf_cleanup_facet_prefix", path_to_json(stale)
-                )
-            else:
-                await self.cleanup_prefix(stale)
+            await self._cleanup_routed_work(target_path[: len(own) + 1])
             return False
         child = await self.resolve(step.class_name, step.name)
         wire_target = WireRouteAddress(key=target.key, data=target.data)
         return await _ffi.call_rpc(
             child, "_cf_route_lifecycle", wire_target, _envelope_to_wire(envelope)
         )
-
-    # HTTP
 
     async def route_request(
         self, request: Request, match: SubAgentPathMatch
@@ -424,13 +413,8 @@ class SubAgentsEngine(LifecycleCapability):
         An upgrade is accepted here (the root keeps the socket) and its
         events are forwarded; anything else is sent to the sub-agent.
         """
-        route = AgentRoute(class_name=match.child_class, name=match.child_name)
-        decision = await run_in_host_context(
-            self._host,
-            partial(self._host.on_before_sub_agent, request, route),
-            request=request,
-        )
-        upgrade = _is_upgrade(request)
+        decision = await self._before_sub_agent(request, match)
+        upgrade = is_upgrade_request(request)
         if isinstance(decision, Response):
             if upgrade:
                 code, reason = rejection_close(decision)
@@ -438,7 +422,7 @@ class SubAgentsEngine(LifecycleCapability):
             return decision
         forward = decision if isinstance(decision, Request) else request
         if upgrade:
-            outer = rewrite_pathname(forward.url, _pathname(request.url))
+            outer = rewrite_pathname(forward.url, urlsplit(request.url).path)
             accepted = _ffi.request_with(forward, headers={OUTER_URL_HEADER: outer})
             return await self._host.lifecycle.fetch(accepted)
         try:
@@ -454,7 +438,19 @@ class SubAgentsEngine(LifecycleCapability):
         )
         return await _ffi.facet_fetch(stub, forwarded)
 
-    # Forwarding client sockets (root and intermediate facets)
+    async def _before_sub_agent(
+        self,
+        request: Request,
+        match: SubAgentPathMatch,
+        connection: Connection | None = None,
+    ) -> Request | Response | None:
+        route = AgentRoute(class_name=match.child_class, name=match.child_name)
+        return await run_in_host_context(
+            self._host,
+            partial(self._host.on_before_sub_agent, request, route),
+            connection=connection,
+            request=request,
+        )
 
     async def forward_connect(
         self, connection: Connection, request: Request, *, gate: bool
@@ -467,64 +463,52 @@ class SubAgentsEngine(LifecycleCapability):
             Whether the connection belongs to a sub-agent (forwarded or
             refused); ``False`` means it's this agent's own.
         """
-        target = await self._resolve_connection(
-            connection, create=True, request=request, gate=gate
+        return await self._forward(
+            connection,
+            "_cf_handle_sub_agent_websocket_connect",
+            create=True,
+            request=request,
+            gate=gate,
         )
-        if target is None:
-            return False
-        if isinstance(target, tuple):
-            child, meta = target
-            await self._call_with_bridge(
-                connection, child, "_cf_handle_sub_agent_websocket_connect", meta
-            )
-        return True
 
     async def forward_message(
         self, connection: Connection, message: str | bytes
     ) -> bool:
         """Forward a frame to the connection's sub-agent, if it has one."""
-        target = await self._resolve_connection(connection, create=False)
-        if target is None:
-            return False
-        if isinstance(target, tuple):
-            child, meta = target
-            await self._call_with_bridge(
-                connection,
-                child,
-                "_cf_handle_sub_agent_websocket_message",
-                meta,
-                message,
-            )
-        return True
+        return await self._forward(
+            connection, "_cf_handle_sub_agent_websocket_message", message
+        )
 
     async def forward_close(
         self, connection: Connection, code: int, reason: str, was_clean: bool
     ) -> bool:
         """Forward a close to the connection's sub-agent, if it has one."""
-        target = await self._resolve_connection(connection, create=False)
-        if target is None:
-            return False
-        if isinstance(target, tuple):
-            child, meta = target
-            await self._call_with_bridge(
-                connection,
-                child,
-                "_cf_handle_sub_agent_websocket_close",
-                meta,
-                code,
-                reason,
-                was_clean,
-            )
-        return True
+        return await self._forward(
+            connection,
+            "_cf_handle_sub_agent_websocket_close",
+            code,
+            reason,
+            was_clean,
+        )
 
-    async def _call_with_bridge(
+    async def _forward(
         self,
         connection: Connection,
-        child: Any,
         method: str,
-        meta: ForwardedConnection,
         *args: Any,
-    ) -> None:
+        create: bool = False,
+        request: Request | None = None,
+        gate: bool = False,
+    ) -> bool:
+        target = await self._resolve_connection(
+            connection, create=create, request=request, gate=gate
+        )
+        if target is None:
+            return False
+        if not isinstance(target, tuple):
+            return True
+
+        child, meta = target
         # The bridge's proxies live only as long as this forwarded event.
         with _ffi.proxies() as scope:
             bridge = {
@@ -534,6 +518,7 @@ class SubAgentsEngine(LifecycleCapability):
                 "broadcast": scope.rpc(self._bridge_broadcast),
             }
             await _ffi.call_rpc(child, method, bridge, meta, *args)
+        return True
 
     def _bridge_broadcast(
         self, path_json: str, message: str | bytes, without: list[str]
@@ -561,13 +546,7 @@ class SubAgentsEngine(LifecycleCapability):
             return None
         forward = request
         if request is not None and gate:
-            route = AgentRoute(class_name=match.child_class, name=match.child_name)
-            decision = await run_in_host_context(
-                self._host,
-                partial(self._host.on_before_sub_agent, request, route),
-                connection=connection,
-                request=request,
-            )
+            decision = await self._before_sub_agent(request, match, connection)
             if isinstance(decision, Response):
                 connection.close(*rejection_close(decision))
                 return _DROPPED
@@ -578,30 +557,14 @@ class SubAgentsEngine(LifecycleCapability):
         )
         if child is None:
             return _DROPPED
-        state, flags = forwarded_state(connection)
-        stored_tags = flags.pop(TAGS_FLAG, None)
-        tags = stored_tags if isinstance(stored_tags, list) else list(connection.tags)
-        meta = ForwardedConnection(
-            id=connection.id,
-            uri=rewrite_pathname(
-                forward.url if forward is not None else uri, match.remaining_path
-            ),
-            tags=tags,
-            state=state,
-            flags=flags,
-            request_headers=(
-                [
-                    [k, v]
-                    for k, v in forward.headers.items()
-                    if k.lower() != OUTER_URL_HEADER
-                ]
-                if forward is not None
-                else None
-            ),
-        )
-        return child, meta
-
-    # Handling forwarded events (in the sub-agent)
+        if forward is None:
+            child_uri = rewrite_pathname(uri, match.remaining_path)
+            return child, forwarded_meta(connection, child_uri, None)
+        child_uri = rewrite_pathname(forward.url, match.remaining_path)
+        headers = [
+            [k, v] for k, v in forward.headers.items() if k.lower() != OUTER_URL_HEADER
+        ]
+        return child, forwarded_meta(connection, child_uri, headers)
 
     async def handle_connect(self, bridge: Any, meta: ForwardedConnection) -> None:
         """Run a forwarded connect here (or pass it further down)."""
@@ -684,8 +647,6 @@ class SubAgentsEngine(LifecycleCapability):
         else:
             connection._update(meta)
         return connection
-
-    # Virtual connection operations
 
     def route_operation(self, connection_id: str, operation: str, *args: Any) -> None:
         """Queue one operation on a root-owned socket, after earlier ones.
@@ -770,8 +731,6 @@ class SubAgentsEngine(LifecycleCapability):
         for meta in metas or ():
             self._virtual.setdefault(meta["id"], VirtualConnection(self, meta))
 
-    # The root's side of virtual connections
-
     def connection_target(self, connection: Connection) -> list[AgentPathStep] | None:
         """Return the sub-agent path a root socket targets, or ``None``."""
         found = self._target_of(connection)
@@ -810,24 +769,11 @@ class SubAgentsEngine(LifecycleCapability):
 
     def connection_metas(self, owner: list[AgentPathStep]) -> list[ForwardedConnection]:
         """Return the root sockets that belong to sub-agent ``owner``."""
-        metas: list[ForwardedConnection] = []
-        for connection in self._host._websockets.get_connections():
-            found = self._target_of(connection, stop_at=owner)
-            if found is None:
-                continue
-            state, flags = forwarded_state(connection)
-            tags = flags.pop(TAGS_FLAG, None)
-            metas.append(
-                ForwardedConnection(
-                    id=connection.id,
-                    uri=found[1],
-                    tags=tags if isinstance(tags, list) else list(connection.tags),
-                    state=state,
-                    flags=flags,
-                    request_headers=None,
-                )
-            )
-        return metas
+        return [
+            forwarded_meta(connection, found[1], None)
+            for connection in self._host._websockets.get_connections()
+            if (found := self._target_of(connection, stop_at=owner)) is not None
+        ]
 
     async def broadcast_to_path(
         self,
@@ -847,27 +793,27 @@ class SubAgentsEngine(LifecycleCapability):
                 list(without),
             )
             return
+        owner_path, message = list(owner), as_message(message)
         for connection in self._host._websockets.get_connections():
-            if connection.id in without or self.connection_target(connection) != list(
-                owner
-            ):
+            if connection.id in without:
                 continue
-            _send(connection, as_message(message))
+            if self.connection_target(connection) == owner_path:
+                _send(connection, message)
 
     def close_connections_under(
         self, prefix: Sequence[AgentPathStep], code: int, reason: str
     ) -> None:
         """Close every root socket of a sub-agent subtree (root only).
 
-        Marked first, so a frame already in flight can't recreate the
-        sub-agent.
+        Marks each socket deleted before closing it, so a frame already in
+        flight can't recreate the sub-agent.
         """
         for connection in self._host._websockets.get_connections():
             target = self.connection_target(connection)
             if target is None or not is_same_prefix(prefix, target):
                 continue
             connection._set_flag(DELETED_FLAG, True)
-            with _suppress_closed():
+            with suppress(_ffi.JsException):
                 connection.close(code, reason)
 
     async def _close_connections_for(self, path: list[AgentPathStep]) -> None:
@@ -881,8 +827,6 @@ class SubAgentsEngine(LifecycleCapability):
             )
         else:
             self.close_connections_under(path, 1001, "Sub-agent deleted")
-
-    # Calling sub-agents from outside
 
     async def invoke(
         self, class_name: str, name: str, method: str, args: list[Any]
@@ -953,15 +897,6 @@ def _envelope_from_wire(envelope: WireEnvelope) -> RouteEnvelope:
     )
 
 
-def _is_upgrade(request: Request) -> bool:
-    upgrade = request.headers.get("Upgrade")
-    return upgrade is not None and upgrade.lower() == "websocket"
-
-
-def _pathname(url: str) -> str:
-    return urlsplit(url).path
-
-
 def as_message(message: Any) -> str | bytes:
     """Return a frame as ``str`` or ``bytes`` (binary crosses RPC as a memoryview)."""
     return message if isinstance(message, str | bytes) else bytes(message)
@@ -972,7 +907,7 @@ def _bridge_send(connection: Connection, message: str | bytes) -> None:
 
 
 def _bridge_close(connection: Connection, code: int | None, reason: str | None) -> None:
-    with _suppress_closed():
+    with suppress(_ffi.JsException):
         connection.close(code, reason)
 
 
@@ -980,12 +915,3 @@ def _bridge_set_state(
     connection: Connection, state: Any, flags: dict[str, Any]
 ) -> None:
     apply_forwarded_state(connection, state, dict(flags or {}))
-
-
-def _send(connection: Connection, message: str | bytes) -> None:
-    with _suppress_closed():
-        connection.send(message)
-
-
-def _suppress_closed() -> AbstractContextManager[None]:
-    return suppress(_ffi.JsException)

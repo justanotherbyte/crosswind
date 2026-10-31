@@ -1,6 +1,6 @@
 """Durable conversation history: the Sessions capability.
 
-Port of the phase-1 surface of upstream ``sessions/`` (``sessions.ts``,
+Port of the phase-1 API of upstream ``sessions/`` (``sessions.ts``,
 ``handle.ts``, ``core.ts``, ``mirror.ts``; ``.design/sessions_api.md``,
 ``.design/sessions_engine.md``). A session is a chain of messages in wire
 form; one too large for a row is split across continuation rows. Reads walk
@@ -17,10 +17,11 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequen
 from functools import partial
 from typing import Any, Literal, cast, override
 
+from ..core.encoding import byte_length, to_js_json
 from ..core.events import Disposable, Emitter
 from ..lifecycle.capability import LifecycleCapability
 from .chunking import split_content
-from .sanitize import byte_length, sanitize_message
+from .sanitize import sanitize_message
 from .store import MAX_PATH_DEPTH, PathRow, SessionStore, Tail
 from .tokens import estimate_row_tokens
 from .types import (
@@ -119,8 +120,6 @@ class Sessions(LifecycleCapability):
 
         return self._feed.subscribe(guarded)
 
-    # Writes (synchronous; the handle runs the feed afterwards)
-
     def _prepare(
         self, message: SessionMessage, source: Source
     ) -> tuple[SessionMessage, int]:
@@ -155,7 +154,7 @@ class Sessions(LifecycleCapability):
             if existing is not None:
                 return AppendResult(inserted=False, message=existing)
         tail = self._tail(session_id)
-        text = _dumps(message)
+        text = to_js_json(message)
         insert = partial(
             store.insert,
             session_id,
@@ -184,7 +183,7 @@ class Sessions(LifecycleCapability):
         old = store.key_columns(session_id, id)
         if old is None:
             return "missing"
-        text = _dumps(message)
+        text = to_js_json(message)
         digest = _digest(text)
         if old["content_hash"] == digest:
             return "unchanged"
@@ -221,8 +220,6 @@ class Sessions(LifecycleCapability):
         self.lifecycle.storage.transactionSync(partial(self._store.clear, session_id))
         self._tails[session_id] = Tail(leaf_id=None, next_seq=1)
         self.lifecycle.emit("session:cleared", {"sessionId": session_id})
-
-    # Reads
 
     def _tail(self, session_id: str) -> Tail:
         tail = self._tails.get(session_id)
@@ -263,8 +260,6 @@ class Session:
         self._sessions = sessions
         self.session_id = session_id
         """This session's id (``""`` for the default)."""
-
-    # Writes
 
     async def append_message(
         self, message: SessionMessage, *, source: Source = "server"
@@ -326,8 +321,6 @@ class Session:
         self._sessions._clear(self.session_id)
         await self._notify(ClearEvent(session_id=self.session_id))
 
-    # Reads
-
     async def history(self) -> AsyncIterator[SessionMessage]:
         """Yield the conversation, oldest first, fetching content in windows."""
         await self._sessions.lifecycle.ready()
@@ -348,7 +341,7 @@ class Session:
         batch: list[SessionMessage] = []
         used = 0
         async for message in self.history():
-            nbytes = byte_length(_dumps(message))
+            nbytes = byte_length(to_js_json(message))
             if batch and (len(batch) >= size or used + nbytes > limit):
                 yield batch
                 batch, used = [], 0
@@ -407,8 +400,6 @@ class Session:
             for row in self._sessions._path(self.session_id)
         ]
 
-    # Change feed
-
     def mirror[M](
         self,
         *,
@@ -458,8 +449,6 @@ class Session:
 
         return self._sessions.subscribe(apply)
 
-    # Synchronous surface (first-party machinery: chat's cutover)
-
     def _upsert_sync(
         self, message: SessionMessage, *, source: Source = "server"
     ) -> tuple[AppendResult, Callable[[], Awaitable[None]]]:
@@ -502,14 +491,6 @@ class Session:
 
 async def _nothing() -> None:
     pass
-
-
-def _dumps(message: SessionMessage) -> str:
-    # Compact and keeping non-ASCII characters, like JSON.stringify, so stored
-    # sizes and byte budgets match upstream's. NaN raises: browsers can't parse it.
-    return json.dumps(
-        message, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-    )
 
 
 def _digest(text: str) -> str:

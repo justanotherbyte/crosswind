@@ -18,6 +18,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from ._json import dumps, stable_dumps
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "assistant_content_key",
@@ -30,7 +31,11 @@ type Message = dict[str, Any]
 type Part = dict[str, Any]
 type Sanitize = Callable[[Message], Message]
 
-_RESOLVED = ("output-available", "output-error", "output-denied")
+_RESULT_FIELDS = {
+    "output-available": "output",
+    "output-error": "errorText",
+    "output-denied": "approval",
+}
 _PENDING = ("input-available", "approval-requested", "approval-responded")
 
 
@@ -163,12 +168,9 @@ def _merge_server_tool_outputs(
                 continue
             changed = True
             merged = {**part, "state": server["state"]}
-            if server["state"] == "output-available" and "output" in server:
-                merged["output"] = server["output"]
-            elif server["state"] == "output-error" and "errorText" in server:
-                merged["errorText"] = server["errorText"]
-            elif server["state"] == "output-denied" and "approval" in server:
-                merged["approval"] = server["approval"]
+            result_field = _RESULT_FIELDS[server["state"]]
+            if result_field in server:
+                merged[result_field] = server[result_field]
             parts.append(merged)
         return {**message, "parts": parts} if changed else message
 
@@ -228,7 +230,7 @@ def _has_tool_call(message: Message) -> bool:
 
 
 def _is_resolved(part: Part) -> bool:
-    return "toolCallId" in part and part.get("state") in _RESOLVED
+    return "toolCallId" in part and part.get("state") in SETTLED_TOOL_STATES
 
 
 def _is_pending(part: Part) -> bool:

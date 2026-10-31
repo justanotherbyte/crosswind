@@ -121,8 +121,6 @@ class SessionStore:
         self.sql(_MESSAGES)
         self.sql(_CHUNKS)
 
-    # Reads
-
     def exists(self, session_id: str, id: str) -> bool:
         """Return whether the session has a message with ``id`` (key-only probe)."""
         return bool(
@@ -223,8 +221,6 @@ class SessionStore:
         for row in rows:
             joined[row["id"]] = joined.get(row["id"], "") + row["content"]
         return joined
-
-    # Writes (callers wrap them in one transaction)
 
     def insert(
         self,

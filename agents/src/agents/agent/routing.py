@@ -118,9 +118,10 @@ async def route_agent_request(
     class_name, namespace = binding
 
     cors_headers = _cors_headers(cors)
-    upgrade = is_upgrade_request(request)
     if request.method == "OPTIONS" and cors_headers is not None:
         return Response(None, headers=cors_headers)
+
+    upgrade = is_upgrade_request(request)
 
     def with_cors(response: Response) -> Response:
         if cors_headers is None or upgrade:
@@ -137,9 +138,8 @@ async def route_agent_request(
             request = outcome
 
     stub = _stub(namespace, name, jurisdiction, location_hint)
-    forwarded = request
     response = await _with_routing_retry(
-        lambda: stub.fetch(_ffi.clone_request(forwarded)),
+        lambda: stub.fetch(_ffi.clone_request(request)),
         name=name,
         class_name=class_name,
         options=routing_retry,

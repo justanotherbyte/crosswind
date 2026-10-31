@@ -15,6 +15,7 @@ import re
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from typing import Any, Protocol
 
+from ..core.encoding import to_json
 from ..core.timing import to_seconds
 from ..core.types import Duration
 from .errors import (
@@ -64,7 +65,6 @@ _NAME_BEARING = {"tools/call": "name", "prompts/get": "name", "resources/read": 
 _HEADER_SAFE = re.compile(r"[\x20-\x7e]*")
 _BASE64_SENTINEL = re.compile(r"=\?base64\?.*\?=")
 
-_DISCOVER_TIMEOUT = 10
 _DEFAULT_TIMEOUT = 60
 _GET_RECONNECT_ATTEMPTS = 2
 _GET_RECONNECT_DELAY_MS = 1000
@@ -136,8 +136,6 @@ class McpSession:
         self._tool_headers: dict[str, dict[tuple[str, ...], str]] = {}
         self._retry_ms = _GET_RECONNECT_DELAY_MS
 
-    # Negotiated state
-
     @property
     def is_modern(self) -> bool:
         """``bool``: whether the 2026-07-28 per-request envelope is in use."""
@@ -164,15 +162,13 @@ class McpSession:
             discover_result=self._result if self.is_modern else None,
         )
 
-    # Negotiation
-
     async def connect(self, *, prior: SessionSnapshot | None = None) -> None:
         """Negotiate the era (``client/_probe.py``), or adopt ``prior``.
 
-        A 2026-07-28 ``prior`` with its discover result is adopted with no
-        request. Otherwise ``server/discover`` is probed and the
-        ``initialize`` handshake is the fallback for anything that isn't
-        positive evidence of a modern server.
+        Adopts a 2026-07-28 ``prior`` that has its discover result without a
+        request. Otherwise probes ``server/discover``, and falls back to the
+        ``initialize`` handshake on anything that isn't positive evidence of
+        a modern server.
 
         Raises
         ------
@@ -233,7 +229,7 @@ class McpSession:
         }
         headers = {"mcp-protocol-version": version, "mcp-method": "server/discover"}
         result = await self._call(
-            "server/discover", params, headers=headers, timeout=_DISCOVER_TIMEOUT
+            "server/discover", params, headers=headers, timeout=10
         )
         if not isinstance(result.get("capabilities"), dict):
             raise MCPRpcError(_INVALID_REQUEST, "unparseable server/discover result")
@@ -282,8 +278,6 @@ class McpSession:
         self.protocol_version = mutual[-1]
         self.session_id = None
         self._result = result
-
-    # The choke point
 
     async def request(
         self,
@@ -406,13 +400,13 @@ class McpSession:
         headers: Mapping[str, str],
         expect_reply: bool,
     ) -> dict[str, Any] | None:
-        # A 401 is retried once after a refresh; a second one must authorize.
+        # Retry a 401 once after a refresh; a second one must authorize.
         for allow_refresh in (True, False):
             request = HttpRequest(
                 method="POST",
                 url=self.url,
                 headers=await self._request_headers(headers),
-                body=json.dumps(message, separators=(",", ":")),
+                body=to_json(message),
             )
             async with send_within_origin(self._http, request) as response:
                 if response.status == 401:
@@ -511,13 +505,10 @@ class McpSession:
             if event.event != "message" or not event.data:
                 continue  # a priming event
             for incoming in _messages(event.data):
-                if "method" not in incoming:
-                    if incoming.get("id") == request_id:
-                        return incoming
-                elif "id" in incoming:
-                    await self._answer(incoming)
-                else:
-                    self._notify(incoming)
+                if "method" in incoming:
+                    await self._dispatch_unsolicited(incoming)
+                elif incoming.get("id") == request_id:
+                    return incoming
         return None
 
     def _notify(self, notification: Mapping[str, Any]) -> None:
@@ -525,26 +516,17 @@ class McpSession:
 
     async def _answer(self, request: Mapping[str, Any]) -> None:
         # Server-initiated requests (handshake era). Only ping is supported.
+        reply: dict[str, Any] = {"jsonrpc": "2.0", "id": request["id"]}
         if request["method"] == "ping":
-            reply: dict[str, Any] = {
-                "jsonrpc": "2.0",
-                "id": request["id"],
-                "result": {},
-            }
+            reply["result"] = {}
         else:
-            reply = {
-                "jsonrpc": "2.0",
-                "id": request["id"],
-                "error": {"code": _METHOD_NOT_FOUND, "message": "Method not found"},
-            }
+            reply["error"] = {"code": _METHOD_NOT_FOUND, "message": "Method not found"}
         await self._post(reply, headers=self._era_headers(), expect_reply=False)
-
-    # Endpoints
 
     async def list_all(self, method: str, key: str) -> list[dict[str, Any]]:
         """Return every item of a paginated list (``tools/list`` and ``tools``, ...).
 
-        Pages are followed until ``nextCursor`` runs out or repeats.
+        Follows pages until ``nextCursor`` runs out or repeats.
 
         Raises
         ------
@@ -612,8 +594,6 @@ class McpSession:
     async def read_resource(self, uri: str) -> dict[str, Any]:
         """Read a resource and return its raw result."""
         return await self.request("resources/read", {"uri": uri})
-
-    # Listening and closing
 
     async def listen(self) -> None:
         """Receive notifications outside requests, until cancelled.

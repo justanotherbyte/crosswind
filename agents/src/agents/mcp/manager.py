@@ -147,8 +147,6 @@ class MCPClientManager(LifecycleCapability):
             self._store_instance = McpServerStore(self.lifecycle.sql)
         return self._store_instance
 
-    # Lifecycle hooks
-
     @override
     async def on_start(self) -> None:
         """Create the table, then restore every stored server in the background."""
@@ -184,8 +182,6 @@ class MCPClientManager(LifecycleCapability):
         self._connections.clear()
         await asyncio.gather(*(connection.close() for connection in connections))
         self._changed.dispose()
-
-    # Servers
 
     async def add_server(
         self,
@@ -289,9 +285,9 @@ class MCPClientManager(LifecycleCapability):
     async def _redeemable(self, server_id: str, auth_url: str) -> bool:
         # A stored URL is offered again only while its state can still be redeemed.
         state = dict(parse_qsl(urlsplit(auth_url).query)).get("state")
-        flow = self._flows.get(server_id)
         if state is None:
             return True
+        flow = self._flows.get(server_id)
         return flow is not None and (await flow.provider.check_state(state)).valid
 
     async def connect_server(self, id: str) -> AddMcpServerResult:
@@ -410,8 +406,6 @@ class MCPClientManager(LifecycleCapability):
             )
         return state
 
-    # The catalog
-
     def list_tools(
         self,
         *,
@@ -499,8 +493,6 @@ class MCPClientManager(LifecycleCapability):
                 except KeyError:  # a server's malformed entry: skip it
                     _log.warning("Skipping a malformed %s entry from %s", kind, sid)
 
-    # Calls
-
     async def call_tool(
         self,
         server_id: str,
@@ -533,8 +525,6 @@ class MCPClientManager(LifecycleCapability):
     ) -> GetPromptResult:
         """Render a prompt (raises as `call_tool`)."""
         return await self._get(server_id).get_prompt(name, arguments)
-
-    # Connections
 
     def _get(self, server_id: str) -> MCPClientConnection:
         connection = self._connections.get(server_id)
@@ -575,10 +565,11 @@ class MCPClientManager(LifecycleCapability):
         return connection
 
     def _authorize(self, connection: MCPClientConnection) -> None:
-        flow = self._flows.get(connection.server_id)
-        client_id = flow.provider.client_id if flow is not None else None
         if connection.auth_url is None:
             return
+
+        flow = self._flows.get(connection.server_id)
+        client_id = flow.provider.client_id if flow is not None else None
         self._store.set_auth(
             connection.server_id, auth_url=connection.auth_url, client_id=client_id
         )
@@ -593,8 +584,6 @@ class MCPClientManager(LifecycleCapability):
 
     async def _connect(self, server_id: str, *, retry: bool) -> MCPConnectionState:
         connection = self._connections[server_id]
-        record = self._store.get(server_id)
-        options = (record.retry if record else None) or DEFAULT_CONNECT_RETRY
 
         async def attempt(_attempt: int) -> MCPConnectionState:
             state = await connection.init()
@@ -602,7 +591,10 @@ class MCPClientManager(LifecycleCapability):
                 raise _ConnectFailedError
             return state
 
-        if not retry:
+        if retry:
+            record = self._store.get(server_id)
+            options = (record.retry if record else None) or DEFAULT_CONNECT_RETRY
+        else:
             options = RetryOptions(max_attempts=1)
         try:
             state = await run_with_retries(
@@ -650,8 +642,6 @@ class MCPClientManager(LifecycleCapability):
 
     def _fire(self) -> None:
         self._changed.fire(None)
-
-    # The OAuth callback
 
     def _callback_server(self, request: "Request") -> str | None:
         # index.ts:1591: a GET on a stored callback URL whose state names a server.

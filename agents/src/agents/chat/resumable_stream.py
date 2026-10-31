@@ -6,8 +6,8 @@ producers' streams on the same object are never touched). Chunks are
 buffered into packed segments (up to 10 chunks or 512 KB) to save storage
 writes; a reconnecting client is sent the stored chunks as replay frames.
 
-The interface is synchronous (it runs on Streams' internal synchronous
-surface), so the agent can drive it from inside a SQLite transaction. Also
+The interface is synchronous (it calls Streams' internal synchronous
+methods), so the agent can drive it from inside a SQLite transaction. Also
 ports ``chat/replay-frames.ts`` and ``chat/chunk-size.ts``.
 
 Not yet ported (12d, recovery): the progress marker (``cf_agents_chat_progress``)
@@ -23,9 +23,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Final, cast
 
+from ..core.encoding import byte_length
 from ..core.timing import now_ms
 from ..core.types import JSONValue
-from ..sessions.sanitize import byte_length
 from ..streams.errors import StreamClosedError
 from ..streams.streams import Streams
 from ..streams.types import StreamRow, StreamState
@@ -100,8 +100,6 @@ class ResumableStream:
         self._delete_hook = streams._on_delete(self._on_row_deleted)
         self.restore()
 
-    # State
-
     @property
     def active_stream_id(self) -> str | None:
         """The stream being produced (or left streaming by a dead isolate)."""
@@ -125,8 +123,6 @@ class ResumableStream:
     def pending_cutover_id(self) -> str | None:
         """The stream finished and waiting for its cutover, if any."""
         return self._pending_cutover
-
-    # Lifecycle
 
     def start(
         self,
@@ -231,8 +227,6 @@ class ResumableStream:
         self._is_live = False
         self._active_is_continuation = False
 
-    # Storing chunks
-
     def store_chunk(self, stream_id: str, body: str) -> int | None:
         """Buffer a chunk body for storage; return its replay index.
 
@@ -276,11 +270,8 @@ class ResumableStream:
         segment: JSONValue = (
             buffered[0][1] if len(buffered) == 1 else [body for _, body in buffered]
         )
-        # Settled or deleted while chunks were buffered: they're dropped.
         with suppress(StreamClosedError):
             self._streams._append(stream_id, segment)
-
-    # Replay
 
     def replay_chunks(self, connection: Connection, request_id: str) -> str | None:
         """Replay the active stream to a reconnecting client.
@@ -423,8 +414,6 @@ class ResumableStream:
         """Return a stream's stored chunk bodies, in order."""
         return list(self._stored_bodies(stream_id))
 
-    # Lookups
-
     def get_stream_message_id(self, stream_id: str) -> str | None:
         """Return the assistant message id a stream was producing."""
         row = self._streams._get_stream(stream_id)
@@ -449,8 +438,6 @@ class ResumableStream:
             return outcome
         deleted = self._deleted_terminals.get(request_id)
         return deleted.outcome if deleted is not None else None
-
-    # Restore and cleanup
 
     def restore(self) -> None:
         """Adopt a stream a previous isolate left streaming, as the active one."""
@@ -496,8 +483,6 @@ class ResumableStream:
     def dispose(self) -> None:
         """Stop observing stream deletions."""
         self._delete_hook.dispose()
-
-    # Internals
 
     def _stored_bodies(self, stream_id: str) -> Iterator[str]:
         # Paged, so a large turn is replayed one page of segments at a time.

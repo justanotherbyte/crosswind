@@ -13,7 +13,7 @@ from typing import Any
 
 from .timing import epoch_ms
 
-__all__ = ("to_json",)
+__all__ = ("byte_length", "to_js_json", "to_json")
 
 
 def to_json(value: Any) -> str:
@@ -29,6 +29,27 @@ def to_json(value: Any) -> str:
         (``JSON.parse`` can't read those back).
     """
     return json.dumps(value, default=_encode, separators=(",", ":"), allow_nan=False)
+
+
+def to_js_json(value: Any) -> str:
+    """Serialize ``value`` as ``JSON.stringify`` does: compact, non-ASCII kept.
+
+    Stored sizes and byte budgets then match upstream's; escaping non-ASCII
+    would store 2-3x the bytes.
+
+    Raises
+    ------
+    TypeError
+        If ``value`` isn't plain JSON.
+    ValueError
+        If ``value`` contains a circular reference, NaN, or an infinity.
+    """
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+
+
+def byte_length(text: str) -> int:
+    """Return the UTF-8 length of ``text`` (a lone surrogate counts 3 bytes)."""
+    return len(text.encode("utf-8", "surrogatepass"))
 
 
 def _encode(value: Any) -> Any:

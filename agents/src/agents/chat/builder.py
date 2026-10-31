@@ -4,7 +4,7 @@ Works on wire-form dictionaries (``.design/chat_engine.md`` §4.2), mutating a
 message's ``parts`` list in place as upstream does. An absent key plays the
 part of JavaScript's ``undefined``: stored JSON never has one.
 
-The rules that matter: text and reasoning go ``streaming`` → ``done``; tool
+The rules that matter: text and reasoning go from ``streaming`` to ``done``; tool
 parts only move forward (providers may resend earlier tool calls in a
 continuation); a tool call's raw input text is kept aside, so a partial JSON
 string is never saved; and tool input is always a JSON object.
@@ -13,6 +13,8 @@ string is never saved; and tool input is always a JSON object.
 import json
 from collections.abc import Iterable
 from typing import Any
+
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "BuilderScratch",
@@ -29,7 +31,6 @@ type Part = dict[str, Any]
 type Chunk = dict[str, Any]
 
 _APPROVAL_STATES = frozenset({"approval-requested", "approval-responded"})
-_SETTLED = frozenset({"output-available", "output-error", "output-denied"})
 
 
 class BuilderScratch:
@@ -105,9 +106,10 @@ def apply_late_tool_input(
 
     Only an absent or provisional input is replaced. Returns whether it was.
     """
-    scratch = scratch if scratch is not None else BuilderScratch()
     if not is_late_tool_input_chunk(parts, chunk):
         return False
+
+    scratch = scratch if scratch is not None else BuilderScratch()
     part = _find_tool_part(parts, chunk.get("toolCallId"))
     assert part is not None
     if "input" in part and not scratch.is_provisional(part):
@@ -261,7 +263,7 @@ def apply_chunk_to_parts(
                 _set(part, "errorText", chunk, "errorText")
                 _copy_call_fields(part, chunk, title=False)
                 parts.append(part)
-            elif existing.get("state") not in _SETTLED:
+            elif existing.get("state") not in SETTLED_TOOL_STATES:
                 existing["state"] = "output-error"
                 _set(existing, "errorText", chunk, "errorText")
                 existing["input"] = normalize_tool_input(chunk.get("input"))[0]
@@ -269,7 +271,7 @@ def apply_chunk_to_parts(
         case "tool-approval-request":
             part = _find_tool_part(parts, chunk.get("toolCallId"))
             if part is not None and part.get("state") not in (
-                _SETTLED | {"approval-responded"}
+                SETTLED_TOOL_STATES | {"approval-responded"}
             ):
                 raw = scratch.raw_input(part)
                 if "input" not in part and raw is not None:
@@ -285,7 +287,7 @@ def apply_chunk_to_parts(
         case "tool-output-denied":
             part = _find_tool_part(parts, chunk.get("toolCallId"))
             if part is not None and part.get("state") not in (
-                _SETTLED | {"approval-responded"}
+                SETTLED_TOOL_STATES | {"approval-responded"}
             ):
                 part["state"] = "output-denied"
         case "tool-output-available":
@@ -329,7 +331,7 @@ def is_replay_chunk(parts: list[Part], chunk: Chunk) -> bool:
             return False
         existing = _find_tool_part(parts, tool_call_id)
         return existing is not None and existing.get("state") in (
-            _SETTLED | {"approval-responded"}
+            SETTLED_TOOL_STATES | {"approval-responded"}
         )
     if kind not in ("tool-input-start", "tool-input-delta", "tool-input-available"):
         return False
@@ -363,9 +365,6 @@ def partial_stream_text(bodies: Iterable[str]) -> tuple[str, list[Part]]:
         if part.get("type") == "text" and isinstance(part.get("text"), str)
     )
     return text, parts
-
-
-# Helpers
 
 
 def _or(value: Any, default: Any) -> Any:

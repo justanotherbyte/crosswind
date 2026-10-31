@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 __all__ = (
+    "SETTLED_TOOL_STATES",
     "ToolPartUpdate",
     "apply_tool_update",
     "client_resolvable_tool_names",
@@ -24,13 +25,13 @@ __all__ = (
 
 type Part = dict[str, Any]
 
-_SETTLED = ("output-available", "output-error", "output-denied")
+SETTLED_TOOL_STATES = frozenset({"output-available", "output-error", "output-denied"})
 _ALL_STATES = (
     "input-streaming",
     "input-available",
     "approval-requested",
     "approval-responded",
-    *_SETTLED,
+    *SETTLED_TOOL_STATES,
 )
 
 
@@ -107,7 +108,7 @@ def cross_message_tool_result_update(
     """
 
     def apply(part: Part) -> Part:
-        if part.get("state") in _SETTLED:
+        if part.get("state") in SETTLED_TOOL_STATES:
             return part
         if update_type == "output-error":
             return {
@@ -230,7 +231,7 @@ def has_incomplete_tool_batch(messages: Sequence[dict[str, Any]]) -> bool:
         elif (
             isinstance(kind, str)
             and (kind.startswith("tool-") or kind == "dynamic-tool")
-            and state in (*_SETTLED, "approval-responded")
+            and state in (*SETTLED_TOOL_STATES, "approval-responded")
         ):
             settled = True
         if pending and settled:

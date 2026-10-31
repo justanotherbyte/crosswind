@@ -112,14 +112,11 @@ class MCPClientConnection:
         """Where the user must authorize, while ``AUTHENTICATING``."""
         self._session: McpSession | None = None
         self._catalog: dict[str, list[dict[str, Any]]] = {name: [] for name in _LISTS}
-        self._listener: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[None]] = set()
 
     def __repr__(self) -> str:
         """Return ``<MCPClientConnection id='x' state=ready>``."""
         return f"<MCPClientConnection id={self.server_id!r} state={self.state.value}>"
-
-    # What the server told us
 
     @property
     def capabilities(self) -> dict[str, Any] | None:
@@ -164,8 +161,6 @@ class MCPClientConnection:
             MCPConnectionState.CONNECTING,
             MCPConnectionState.DISCOVERING,
         )
-
-    # The state machine
 
     def _set_state(self, state: MCPConnectionState, error: str | None = None) -> None:
         self.state = state
@@ -231,8 +226,6 @@ class MCPClientConnection:
             payload["error"] = self.error
         self._emit("mcp:client:connect", payload)
 
-    # Discovery
-
     async def discover(self, *, timeout: Duration) -> None:
         """Load the catalog the server advertises, then become ``READY``.
 
@@ -264,7 +257,7 @@ class MCPClientConnection:
 
         self._set_state(MCPConnectionState.READY)
         self._emit("mcp:client:discover", {"url": self.url})
-        self._listener = self._spawn(self._listen(session))
+        self._spawn(self._listen(session))
 
     async def _load_catalog(self, session: McpSession, timeout: Duration) -> None:
         capabilities = session.capabilities
@@ -297,8 +290,6 @@ class MCPClientConnection:
                 },
             )
 
-    # Notifications
-
     def _on_notification(self, method: str, params: dict[str, Any]) -> None:
         names = _LIST_CHANGED.get(method)
         session = self._session
@@ -324,13 +315,10 @@ class MCPClientConnection:
                 "The notification stream for %s ended", self.server_id, exc_info=True
             )
 
-    def _spawn(self, work: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
         task = asyncio.ensure_future(work)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        return task
-
-    # Calls
 
     def _ready_session(self) -> McpSession:
         if self.state != MCPConnectionState.READY or self._session is None:
@@ -387,14 +375,11 @@ class MCPClientConnection:
             await self._guard(session.read_resource(uri))
         )
 
-    # Closing
-
     async def _stop(self) -> None:
         tasks = list(self._tasks)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        self._listener = None
 
     async def close(self) -> None:
         """Stop the listener and end the session; never raises."""

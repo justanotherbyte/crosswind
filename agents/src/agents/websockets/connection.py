@@ -77,7 +77,6 @@ class Connection(Generic[ConnState]):
         """The tags the connection was accepted under; the id comes first."""
         return self._tags
 
-    # State
     def _attachment(self) -> Attachment:
         return cast(Attachment, _ffi.read_attachment(self._ws))
 
@@ -109,7 +108,6 @@ class Connection(Generic[ConnState]):
         attachment["__user"] = state
         self._write(attachment)
 
-    # Flags
     def _flag(self, key: str) -> Any:
         return self._attachment().get("__flags", {}).get(key)
 
@@ -147,7 +145,6 @@ class Connection(Generic[ConnState]):
     def _set_protocol_enabled(self, enabled: bool) -> None:
         self._set_flag(_NO_PROTOCOL, None if enabled else True)
 
-    # The socket
     @property
     def _is_open(self) -> bool:
         return self._ws.readyState == _OPEN

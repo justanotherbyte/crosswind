@@ -6,13 +6,14 @@ in ``dynamic-agents.ts`` (``.design/sql_schemas.md`` §11.2, §12).
 
 import json
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from ..core.sql import Sql
 from ..core.timing import from_epoch_ms, now_ms
 from .types import FiberInspection, FiberLedgerRow, FiberRunRow, FiberStatus
 
-__all__ = ("FiberStore", "inspection_from_row")
+__all__ = ("FiberStore", "inspection_from_row", "metadata_from_json")
 
 _RUNS = """CREATE TABLE IF NOT EXISTS cf_agents_runs (
   id TEXT PRIMARY KEY NOT NULL,
@@ -81,8 +82,6 @@ class FiberStore:
         ):
             self.sql(statement)
 
-    # Run rows (one per fiber executing, or left by a dead isolate)
-
     def insert_run(self, id: str, name: str) -> None:
         """Insert the row of a fiber starting now."""
         self.sql(
@@ -133,8 +132,6 @@ class FiberStore:
     def count_runs(self) -> int:
         """Return how many run rows there are."""
         return self.sql("SELECT COUNT(*) AS count FROM cf_agents_runs")[0]["count"]
-
-    # The managed-fiber ledger
 
     def get(self, fiber_id: str) -> FiberLedgerRow | None:
         """Return a ledger record by id."""
@@ -233,12 +230,14 @@ class FiberStore:
         self, statuses: Sequence[FiberStatus] | None, name: str | None, limit: int
     ) -> Sequence[FiberLedgerRow]:
         """Return ledger records, newest first, optionally filtered."""
+        encoded = json.dumps(list(statuses)) if statuses is not None else None
         return self.sql(
             "SELECT " + _LEDGER_COLUMNS + " FROM cf_agents_fibers"
             " WHERE (? IS NULL OR status IN (SELECT value FROM json_each(?)))"
             " AND (? IS NULL OR name = ?)"
             " ORDER BY created_at DESC, fiber_id DESC LIMIT ?",
-            *_json_filter(statuses),
+            encoded,
+            encoded,
             name,
             name,
             limit,
@@ -269,8 +268,6 @@ class FiberStore:
                 row["fiber_id"],
             )
         return len(rows)
-
-    # The root's index of fibers running in facets
 
     def register_facet_run(self, owner_key: str, owner_data: str, run_id: str) -> None:
         """Index a facet's running fiber on the root."""
@@ -328,25 +325,19 @@ def inspection_from_row(row: FiberLedgerRow) -> FiberInspection:
         idempotency_key=row["idempotency_key"],
         snapshot=json.loads(row["snapshot"]) if row["snapshot"] is not None else None,
         error=row["error_message"],
-        metadata=_json_object(row["metadata_json"]),
+        metadata=metadata_from_json(row["metadata_json"]),
         started_at=_moment(row["started_at"]),
         settled_at=_moment(row["completed_at"]),
     )
 
 
-def _json_filter(
-    statuses: Sequence[FiberStatus] | None,
-) -> tuple[str | None, str | None]:
-    encoded = json.dumps(list(statuses)) if statuses is not None else None
-    return encoded, encoded
-
-
-def _json_object(text: str | None) -> dict[str, Any] | None:
+def metadata_from_json(text: str | None) -> dict[str, Any] | None:
+    """Parse a ledger row's ``metadata_json``; ``None`` unless it's an object."""
     if text is None:
         return None
     value = json.loads(text)
     return value if isinstance(value, dict) else None
 
 
-def _moment(ms: int | None) -> Any:
+def _moment(ms: int | None) -> datetime | None:
     return from_epoch_ms(ms) if ms is not None else None

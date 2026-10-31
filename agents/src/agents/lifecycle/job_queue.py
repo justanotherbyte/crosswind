@@ -32,6 +32,8 @@ __all__ = (
     "is_hung",
     "job_from_row",
     "new_job_id",
+    "retry_from_json",
+    "retry_to_json",
 )
 
 HOST_JOB_OWNER = "host"
@@ -67,6 +69,7 @@ def new_job_id() -> str:
 
 
 def retry_to_json(retry: RetryOptions) -> str:
+    """Return ``retry`` as the JSON upstream stores (camelCase, milliseconds)."""
     return json.dumps(
         {
             "maxAttempts": retry.max_attempts,
@@ -77,6 +80,7 @@ def retry_to_json(retry: RetryOptions) -> str:
 
 
 def retry_from_json(text: str) -> RetryOptions:
+    """Parse stored retry JSON; a missing key takes the `RetryOptions` default."""
     raw: dict[str, Any] = json.loads(text)
     defaults = RetryOptions()
     return RetryOptions(
@@ -143,11 +147,14 @@ class JobQueue:
         self._sql = sql
         self._table_ready = False
 
-    def _rows(self, query: Any, *params: Any) -> Sequence[JobRow]:
+    def _table_sql(self) -> Sql:
         if not self._table_ready:
             self._sql(_CREATE_TABLE)
             self._table_ready = True
-        return self._sql(query, *params, row=JobRow)
+        return self._sql
+
+    def _rows(self, query: Any, *params: Any) -> Sequence[JobRow]:
+        return self._table_sql()(query, *params, row=JobRow)
 
     def push(
         self,
@@ -211,7 +218,6 @@ class JobQueue:
         job = self.get(owner, job_id)
         if job is None:
             raise ValueError(self._push_failure(job_id))
-
         return job
 
     def _push_failure(self, job_id: str) -> str:
@@ -353,14 +359,15 @@ class JobQueue:
         job, clamped into the future (overdue rows must re-fire), and the
         earliest hung-timeout recheck of an in-flight single-flight job.
         """
-        exclusive = self._sql(
+        sql = self._table_sql()
+        exclusive = sql(
             "SELECT MIN(time) AS time FROM cf_agents_jobs WHERE exclusive = 1"
         )
         if exclusive and exclusive[0]["time"] is not None:
             return int(exclusive[0]["time"])
 
         candidate: int | None = None
-        ready = self._sql(
+        ready = sql(
             """SELECT MIN(time) AS time FROM cf_agents_jobs
                WHERE singleflight = 0
                   OR running = 0
@@ -372,7 +379,7 @@ class JobQueue:
         if ready and ready[0]["time"] is not None:
             candidate = max(int(ready[0]["time"]), now_ms + 1)
 
-        in_flight = self._sql(
+        in_flight = sql(
             """SELECT MIN(coalesce(execution_started_at, 0)
                       + coalesce(hung_timeout_seconds, ?) * 1000) AS recheck
                FROM cf_agents_jobs

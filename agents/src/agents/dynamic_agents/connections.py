@@ -100,15 +100,28 @@ class VirtualConnection(Connection):
         return hash(self._id)
 
 
-def forwarded_state(connection: Connection) -> tuple[Any, dict[str, Any]]:
-    """Return what a sub-agent sees of a connection: its state and flags."""
+def forwarded_meta(
+    connection: Connection, uri: str, request_headers: list[list[str]] | None
+) -> ForwardedConnection:
+    """Return what a sub-agent sees of a connection, without root-only flags.
+
+    The tags are the ones the sub-agent chose, when it has chosen.
+    """
     attachment = connection._attachment()
     flags = {
         key: value
         for key, value in attachment.get("__flags", {}).items()
         if key not in ROOT_ONLY_FLAGS
     }
-    return attachment.get("__user"), flags
+    tags = flags.pop(TAGS_FLAG, None)
+    return ForwardedConnection(
+        id=connection.id,
+        uri=uri,
+        tags=tags if isinstance(tags, list) else list(connection.tags),
+        state=attachment.get("__user"),
+        flags=flags,
+        request_headers=request_headers,
+    )
 
 
 def apply_forwarded_state(

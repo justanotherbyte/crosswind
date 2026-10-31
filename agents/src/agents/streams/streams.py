@@ -15,6 +15,7 @@ import json
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any, cast, override
 
+from ..core.encoding import byte_length, to_js_json
 from ..core.events import Disposable
 from ..core.timing import from_epoch_ms, now_ms
 from ..core.types import JSONValue
@@ -138,8 +139,6 @@ class Streams(LifecycleCapability):
             self._store.ensure_tables()
             await storage.put(_SCHEMA_VERSION_KEY, _SCHEMA_VERSION)
 
-    # Producing
-
     async def open(
         self,
         stream_id: str,
@@ -191,8 +190,6 @@ class Streams(LifecycleCapability):
         self._insert_stream(stream_id, tag, metadata)
         return StreamWriter(self, stream_id)
 
-    # Reading
-
     async def read(
         self, stream_id: str, *, start: int = 0
     ) -> AsyncIterator[StreamChunk]:
@@ -241,11 +238,12 @@ class Streams(LifecycleCapability):
         """
         await self.lifecycle.ready()
         store = self._store
+        if store.state(stream_id) is None:
+            raise StreamNotFoundError(stream_id)
+
         size = max(1, batch_size)
         next_seq = max(0, start)
         caught_up = False
-        if store.state(stream_id) is None:
-            raise StreamNotFoundError(stream_id)
         while True:
             batch = [
                 StreamChunk(seq=seq, chunk=value)
@@ -320,11 +318,9 @@ class Streams(LifecycleCapability):
         self._emit("stream:deleted", {"streamId": stream_id})
         return True
 
-    # Synchronous surface (first-party machinery, e.g. chat)
-    #
-    # Same-isolate and synchronous; it skips lifecycle.ready(), so callers
-    # own startup ordering (upstream's __DO_NOT_USE_WILL_BREAK__sync). The
-    # public methods are built on the same operations.
+    # The underscored methods below serve first-party code such as chat. They
+    # run synchronously in this isolate and skip lifecycle.ready(), so callers
+    # own startup ordering (upstream's __DO_NOT_USE_WILL_BREAK__sync).
 
     def _ensure_tables(self) -> None:
         self._store.ensure_tables()
@@ -443,7 +439,7 @@ class Streams(LifecycleCapability):
         """Return one page of the log from ``start``, values as JSON text."""
         return [
             StreamChunkRow(
-                stream_id=stream_id, seq=seq, chunk=_dumps(value), created_at=at
+                stream_id=stream_id, seq=seq, chunk=to_js_json(value), created_at=at
             )
             for seq, value, at in self._store.chunks(stream_id, start, limit)
         ]
@@ -458,8 +454,6 @@ class Streams(LifecycleCapability):
         # callers apply their own ownership check.
         return self._store.rows_by_tag(tag, state)
 
-    # Internals
-
     def _delete_rows(self, stream_id: str) -> bool:
         # Every deletion passes here, so hooks see each one, with the row and
         # cursor as they were.
@@ -473,11 +467,10 @@ class Streams(LifecycleCapability):
 
     def _serialize(self, value: Any, context: str) -> str:
         try:
-            text = _dumps(value)
+            text = to_js_json(value)
         except (TypeError, ValueError) as error:
             raise StreamSerializationError(context, str(error)) from error
-        # surrogatepass: a lone surrogate (from JS text) is measured, not raised.
-        size = len(text.encode("utf-8", "surrogatepass"))
+        size = byte_length(text)
         if size > self._max_chunk_bytes:
             raise StreamSerializationError(
                 context,
@@ -547,13 +540,6 @@ def _validate_stream_id(stream_id: str) -> None:
         raise ValueError("Stream ids must be non-empty strings")
     if len(stream_id) > _MAX_STREAM_ID_LENGTH:
         raise ValueError(f"Stream ids are at most {_MAX_STREAM_ID_LENGTH} characters")
-
-
-def _dumps(value: Any) -> str:
-    # Compact and keeping non-ASCII characters, like JSON.stringify (escaping
-    # them would store 2-3x the bytes). NaN and infinities aren't JSON, so
-    # they're refused rather than stored as text no other reader could parse.
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
 def _metadata(text: str | None) -> dict[str, JSONValue] | None:

@@ -81,8 +81,6 @@ class StreamStore:
         for statement in (_STREAMS, _STREAMS_BY_TAG, _BLOCKS):
             self.sql(statement)
 
-    # Stream rows
-
     def get(self, stream_id: str) -> StreamRow | None:
         """Return one stream's row."""
         rows = self.sql(
@@ -188,8 +186,6 @@ class StreamStore:
             state,
             row=StreamRow,
         )
-
-    # The chunk log
 
     def tail(self, stream_id: str) -> Tail:
         """Return the log's tail (the source of truth while a stream is live)."""

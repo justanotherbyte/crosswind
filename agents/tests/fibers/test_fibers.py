@@ -89,9 +89,6 @@ async def crash(agent: Worker, start: Any) -> Worker:
     return make(agent.ctx.storage, type(agent))
 
 
-# Plain fibers
-
-
 def test_run_fiber_returns_and_checkpoints_while_running() -> None:
     agent = make()
     seen: list[Any] = []
@@ -136,9 +133,6 @@ def test_run_fiber_errors_propagate_and_clean_up() -> None:
 def test_stash_outside_a_fiber_is_an_error() -> None:
     with pytest.raises(RuntimeError, match="outside a fiber"):
         make().stash({})
-
-
-# Keep-alive
 
 
 def test_a_running_fiber_holds_a_keep_alive_heartbeat() -> None:
@@ -190,9 +184,6 @@ def test_a_stale_heartbeat_is_dropped_on_wake() -> None:
         return restarted._keep_alive.lifecycle.jobs.get("keep-alive") is None
 
     assert asyncio.run(scenario())
-
-
-# Recovery of plain fibers
 
 
 def test_an_interrupted_fiber_is_recovered_on_the_next_wake() -> None:
@@ -292,9 +283,6 @@ def test_the_internal_hook_runs_first_and_is_timed_out() -> None:
         e for e in recorder(restarted).events if e.type == "fiber:recovery:handled"
     ]
     assert [e.payload["status"] for e in handled] == ["internal"]
-
-
-# Managed fibers
 
 
 def test_start_fiber_runs_in_the_background_and_dedupes() -> None:

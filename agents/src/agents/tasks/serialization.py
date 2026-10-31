@@ -8,6 +8,7 @@ import json
 import re
 from typing import Any
 
+from ..core.encoding import to_js_json
 from .errors import TaskSerializationError
 
 __all__ = ("MAX_SERIALIZED_BYTES", "deserialize_task_value", "serialize_task_value")
@@ -37,9 +38,7 @@ def serialize_task_value(value: Any, context: str) -> str | None:
     if value is None:
         return None
     try:
-        text = json.dumps(
-            value, ensure_ascii=False, allow_nan=False, separators=(",", ":")
-        )
+        text = to_js_json(value)
     except (TypeError, ValueError) as error:
         raise TaskSerializationError(context, str(error)) from error
     # Escape surrogates as JS's JSON.stringify does, so the text is valid UTF-8.

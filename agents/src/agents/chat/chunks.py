@@ -47,14 +47,11 @@ __all__ = (
 )
 
 type ProviderMetadata = dict[str, dict[str, JSONValue]]
-"""Provider name → provider-specific JSON."""
+"""Provider-specific JSON, by provider name."""
 
 type FinishReason = Literal[
     "stop", "length", "content-filter", "tool-calls", "error", "other"
 ]
-
-
-# Text
 
 
 @dataclass(slots=True, kw_only=True)
@@ -85,9 +82,6 @@ class TextEnd:
     provider_metadata: ProviderMetadata | None = wire("providerMetadata", None)
 
 
-# Reasoning
-
-
 @dataclass(slots=True, kw_only=True)
 class ReasoningStart:
     """A reasoning part begins."""
@@ -114,9 +108,6 @@ class ReasoningEnd:
     type: ClassVar[str] = "reasoning-end"
     id: str
     provider_metadata: ProviderMetadata | None = wire("providerMetadata", None)
-
-
-# Tool input
 
 
 @dataclass(slots=True, kw_only=True)
@@ -173,9 +164,6 @@ class ToolInputError:
     title: str | None = None
 
 
-# Tool approval
-
-
 @dataclass(slots=True, kw_only=True)
 class ToolApprovalRequest:
     """The tool call needs the user's approval before it runs."""
@@ -186,9 +174,6 @@ class ToolApprovalRequest:
     approval_descriptor: JSONValue = wire("approvalDescriptor", None)
     input_schema_input: JSONValue = wire("inputSchemaInput", None)
     signature: str | None = None
-
-
-# Tool output
 
 
 @dataclass(slots=True, kw_only=True)
@@ -227,9 +212,6 @@ class ToolOutputDenied:
     tool_call_id: str = wire("toolCallId")
 
 
-# Sources and files
-
-
 @dataclass(slots=True, kw_only=True)
 class SourceUrl:
     """A web source the reply cites."""
@@ -263,9 +245,6 @@ class File:
     provider_metadata: ProviderMetadata | None = wire("providerMetadata", None)
 
 
-# Developer data
-
-
 @dataclass(slots=True, kw_only=True)
 class Data:
     """App data in the reply; its wire type is ``data-{name}``.
@@ -278,9 +257,6 @@ class Data:
     data: JSONValue
     id: str | None = None
     transient: bool = False
-
-
-# Steps and the message
 
 
 @dataclass(slots=True, kw_only=True)

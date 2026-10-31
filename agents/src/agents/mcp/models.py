@@ -8,7 +8,7 @@ are ignored, so a newer server never fails to decode.
 """
 
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from functools import cache
 from typing import Any, ClassVar, Literal, NamedTuple, Self
 
@@ -98,9 +98,6 @@ class _Record:
         return cls(**_decode(cls, payload))
 
 
-# Catalog entries
-
-
 @dataclasses.dataclass(slots=True, kw_only=True)
 class Tool(_Record):
     """A tool a server offers. ``input_schema`` is plain JSON Schema."""
@@ -179,9 +176,6 @@ class ResourceTemplate(_Record):
     annotations: JsonObject | None = None
     icons: list[JsonObject] | None = None
     meta: JsonObject | None = wire("_meta", None)
-
-
-# Content
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)
@@ -317,13 +311,6 @@ def _content(payload: Mapping[str, Any]) -> ContentBlock:
     return cls.from_wire(payload)
 
 
-def _contents(payload: Sequence[Mapping[str, Any]]) -> list[ContentBlock]:
-    return [_content(item) for item in payload]
-
-
-# Results
-
-
 @dataclasses.dataclass(slots=True, kw_only=True)
 class CallToolResult(_Record):
     """What a tool call returned. ``is_error`` is a tool error, not an exception."""
@@ -336,7 +323,7 @@ class CallToolResult(_Record):
     @classmethod
     def from_wire(cls, payload: Mapping[str, Any]) -> Self:
         """Return the result for a JSON object."""
-        content = _contents(payload.get("content", []))
+        content = [_content(item) for item in payload.get("content", [])]
         return cls(**_decode(cls, payload, content=content))
 
 
@@ -390,9 +377,6 @@ class ReadResourceResult(_Record):
         """
         contents = [_resource_contents(item) for item in payload["contents"]]
         return cls(**_decode(cls, payload, contents=contents))
-
-
-# Catalog entries with their server
 
 
 @dataclasses.dataclass(slots=True, kw_only=True)

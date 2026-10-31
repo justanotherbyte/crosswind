@@ -22,7 +22,7 @@ from .. import _ffi
 from ..core.naming import camel_case_to_kebab_case
 from ..lifecycle.capability import LifecycleCapability
 from ..lifecycle.types import WebSocket
-from .connection import Connection
+from .connection import _OPEN, Connection
 from .errors import DuplicateConnectionIdError
 from .rpc import RpcDispatcher, is_rpc_request
 from .types import (
@@ -127,11 +127,10 @@ class WebSockets(LifecycleCapability):
             return self._added
         return [*self._added, self._handlers]
 
-    # Connections
     def get_connections(self, tag: str | None = None) -> Iterator[Connection]:
         """Yield the open connections, optionally only those with ``tag``."""
         for ws in self.lifecycle.websockets(tag):
-            if ws.readyState != 1:
+            if ws.readyState != _OPEN:
                 continue
             connection = Connection._from_socket(ws)
             if connection is not None:
@@ -165,14 +164,14 @@ class WebSockets(LifecycleCapability):
                 continue
             _send(connection, message)
 
-    # Lifecycle capability hooks
     @override
     async def on_websocket_upgrade(self, request: "Request") -> Response:
         """Accept an upgrade as a hibernatable connection."""
         client, server = _ffi.websocket_pair()
         query = parse_qs(urlsplit(request.url).query)
-        # An empty `_pk` gets a generated id too: an empty tag is invalid.
-        connection_id = (query.get("_pk") or [""])[0] or _new_connection_id()
+        # An empty `_pk` gets a generated id too: an empty tag is invalid. The
+        # generated id is 22 URL-safe characters, like upstream's nanoid().
+        connection_id = (query.get("_pk") or [""])[0] or secrets.token_urlsafe(16)
         meta = ConnectionMeta(id=connection_id, tags=[connection_id], uri=request.url)
         # Written before accepting, so the tags hook can already use the
         # connection (including its state).
@@ -240,7 +239,6 @@ class WebSockets(LifecycleCapability):
             with suppress(_ffi.JsException):  # closed meanwhile
                 connection.close(1001, "Durable Object destroyed")
 
-    # Connect and message dispatch
     async def _connect(
         self, connection: Connection, context: ConnectionContext
     ) -> None:
@@ -327,7 +325,6 @@ class WebSockets(LifecycleCapability):
             partial(decision, connection, context), connection, context
         )
 
-    # Protocol frames
     def send_connect_frames(
         self,
         connection: Connection,
@@ -338,7 +335,7 @@ class WebSockets(LifecycleCapability):
         """Send the connect sequence: the identity frame, then the state.
 
         The identity carries ``stateFollows`` when state follows, so clients
-        resolve ``ready`` only once it has arrived. Nothing is sent to a
+        resolve ``ready`` only once it has arrived. Sends nothing to a
         no-protocol connection. ``name`` and ``agent`` default as for
         `send_identity`.
         """
@@ -349,15 +346,11 @@ class WebSockets(LifecycleCapability):
             current = self._state.get() if self._state is not None else None
             # Serialized first: an identity promising state must never go
             # out without it.
-            state_frame = (
-                json.dumps({"type": _STATE, "state": current})
-                if current is not None
-                else None
-            )
+            state_frame = _state_frame(current) if current is not None else None
             identity = self._identity_frame(name, agent)
             if state_frame is not None:
                 identity["stateFollows"] = True
-            _send(connection, json.dumps(identity))
+            _send_frame(connection, identity)
             if state_frame is not None:
                 _send(connection, state_frame)
         finally:
@@ -378,7 +371,7 @@ class WebSockets(LifecycleCapability):
         whose public identity differs (a facet) passes its own.
         """
         if connection.protocol_enabled:
-            _send(connection, json.dumps(self._identity_frame(name, agent)))
+            _send_frame(connection, self._identity_frame(name, agent))
 
     def _identity_frame(self, name: str | None, agent: str | None) -> dict[str, Any]:
         return {
@@ -401,14 +394,14 @@ class WebSockets(LifecycleCapability):
         finally:
             self._connecting.discard(connection)
         if current is not None:
-            _send(connection, json.dumps({"type": _STATE, "state": current}))
+            _send(connection, _state_frame(current))
 
     def apply_state_frame(self, connection: Connection, frame: Any) -> bool:
         """Apply a parsed ``cf_agent_state`` frame from a client.
 
-        A readonly connection is refused with ``cf_agent_state_error``; a
-        change the validator rejects is logged in full and answered with a
-        generic ``cf_agent_state_error``. Hosts that drive the protocol
+        Refuses a readonly connection with ``cf_agent_state_error``. Logs a
+        change the validator rejects in full and answers it with a generic
+        ``cf_agent_state_error``. Hosts that drive the protocol
         themselves call this inside the host context.
 
         Returns
@@ -443,17 +436,12 @@ class WebSockets(LifecycleCapability):
         current = self._state.get()
         if current is None:
             return
-        text = json.dumps({"type": _STATE, "state": current})
+        text = _state_frame(current)
         for connection in self.get_connections():
             if connection == exclude or connection in self._connecting:
                 continue
             if connection.protocol_enabled:
                 _send(connection, text)
-
-
-def _new_connection_id() -> str:
-    # 22 URL-safe characters, like upstream's nanoid().
-    return secrets.token_urlsafe(16)
 
 
 def _prepare_tags(connection_id: str, tags: list[str]) -> list[str]:
@@ -508,6 +496,10 @@ def _send(connection: Connection, text: str | bytes) -> None:
 
 def _send_frame(connection: Connection, frame: dict[str, Any]) -> None:
     _send(connection, json.dumps(frame))
+
+
+def _state_frame(state: Any) -> str:
+    return json.dumps({"type": _STATE, "state": state})
 
 
 def _reciprocate_close(ws: WebSocket, code: int, reason: str) -> None:

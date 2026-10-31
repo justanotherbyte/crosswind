@@ -135,7 +135,9 @@ def _prepare(value: Any) -> Any:
     if isinstance(value, bytes | bytearray | memoryview):
         return bytes(value)
     if isinstance(value, datetime):
-        return _js_date(value)
+        if value.tzinfo is None:
+            raise TypeError("naive datetime; use a timezone-aware datetime")
+        return js.Date.new(value.timestamp() * 1000)
     if isinstance(value, list):
         return [_prepare(item) for item in value]
     if isinstance(value, dict):
@@ -147,12 +149,6 @@ def _require_str_key(key: object) -> str:
     if not isinstance(key, str):
         raise TypeError(f"dict keys must be str, not {type(key).__name__}")
     return key
-
-
-def _js_date(value: datetime) -> JsProxy:
-    if value.tzinfo is None:
-        raise TypeError("naive datetime; use a timezone-aware datetime")
-    return js.Date.new(value.timestamp() * 1000)
 
 
 def js_to_py(value: Any) -> Any:
@@ -290,7 +286,7 @@ def abort_without_alarm_retry(ctx: Any, reason: str) -> None:
     ``_ctx``; deferred so the current invocation settles first
     (``.design/platform_verification.md`` §7.5).
     """
-    raw = getattr(ctx, "_ctx", ctx)
+    raw = _raw_ctx(ctx)
     options = py_to_js({"retryAlarm": False})
     js.setTimeout(create_once_callable(lambda: raw.abort(reason, options)), 0)
 
@@ -301,7 +297,7 @@ def websocket_error_response(message: str) -> Any:
     Browser devtools don't show an HTTP error body for an upgrade, so (as
     upstream) the error is sent as a frame and the socket closed with 1011.
     """
-    client, server = js.WebSocketPair.new().object_values()
+    client, server = websocket_pair()
     server.accept()
     server.send(json.dumps({"error": message}))
     server.close(1011, "Uncaught exception during session setup")
@@ -617,7 +613,7 @@ def websocket_rejection(code: int, reason: str) -> Response:
     A browser can't read a failed handshake's response, so a refused
     ``/sub/`` connection gets a close frame instead.
     """
-    client, server = js.WebSocketPair.new().object_values()
+    client, server = websocket_pair()
     server.accept()
     server.close(code, reason)
     return Response(None, status=101, web_socket=client)

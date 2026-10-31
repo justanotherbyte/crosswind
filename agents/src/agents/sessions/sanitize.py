@@ -7,17 +7,12 @@ from typing import Any
 
 from .types import SessionMessage
 
-__all__ = ("byte_length", "sanitize_message")
+__all__ = ("sanitize_message",)
 
 _METADATA_KEYS = ("providerMetadata", "callProviderMetadata")
 # OpenAI's per-response item ids and encrypted reasoning: ephemeral, and
 # invalid if replayed in a later request.
 _EPHEMERAL_OPENAI_KEYS = ("itemId", "reasoningEncryptedContent")
-
-
-def byte_length(text: str) -> int:
-    """Return the UTF-8 length of ``text`` (a lone surrogate counts 3 bytes)."""
-    return len(text.encode("utf-8", "surrogatepass"))
 
 
 def sanitize_message(message: SessionMessage) -> SessionMessage:

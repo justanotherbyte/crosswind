@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .builder import normalize_tool_input
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "RepairResult",
@@ -39,7 +40,7 @@ def tool_part_has_settled_result(part: Part) -> bool:
     """Return whether a tool part has a result (an output, or a settled state)."""
     if "output" in part or "result" in part:
         return True
-    return part.get("state") in ("output-available", "output-error", "output-denied")
+    return part.get("state") in SETTLED_TOOL_STATES
 
 
 def repair_interrupted_tool_parts(

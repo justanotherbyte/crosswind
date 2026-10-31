@@ -80,24 +80,24 @@ def resolve_step_policy(
         If ``retries.limit`` is below 1, a delay is negative, or the timeout
         isn't positive.
     """
-    limit = (
-        retries.limit if retries and retries.limit is not None else defaults.retry_limit
-    )
+    retries = retries or StepRetries()
+    limit = retries.limit if retries.limit is not None else defaults.retry_limit
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError(f"StepRetries.limit must be an int >= 1, not {limit!r}")
-    delay_ms = defaults.retry_delay_ms
-    if retries is not None and retries.delay is not None:
-        delay_ms = _duration_ms(retries.delay, "StepRetries.delay", allow_zero=True)
+    delay_ms = (
+        _duration_ms(retries.delay, "StepRetries.delay", allow_zero=True)
+        if retries.delay is not None
+        else defaults.retry_delay_ms
+    )
     timeout_ms = (
         _duration_ms(timeout, "step timeout", allow_zero=False)
         if timeout is not None
         else defaults.timeout_ms
     )
-    backoff = retries.backoff if retries and retries.backoff else defaults.backoff
     return ResolvedStepPolicy(
         retry_limit=limit,
         retry_delay_ms=delay_ms,
-        backoff=backoff,
+        backoff=retries.backoff or defaults.backoff,
         timeout_ms=timeout_ms,
     )
 
@@ -229,8 +229,6 @@ class ReplayStep:
     def idempotency_key(self, name: str) -> str:
         """Return the key ``do(name, ...)`` passes to its attempts."""
         return self._engine.idempotency_key(name)
-
-    # Internals
 
     def _enter_step(self, name: str) -> None:
         """Check a step boundary: the name rules, duplicates, cancellation."""

@@ -6,10 +6,10 @@ rebuilt (``.design/utilities.md`` §2).
 """
 
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
-__all__ = ("get_bound_method", "method_name")
+__all__ = ("get_bound_method", "method_name", "resolve_callback")
 
 
 def get_bound_method(obj: object, name: str) -> Callable[..., Any]:
@@ -66,7 +66,12 @@ def method_name(obj: object, callback: str | Callable[..., Any]) -> str:
         If ``callback`` is a callable but not a bound method of ``obj``
         (including callables without a name, such as a ``functools.partial``).
     """
-    name = callback if isinstance(callback, str) else _callable_name(callback)
+    name = (
+        callback if isinstance(callback, str) else getattr(callback, "__name__", None)
+    )
+    if not isinstance(name, str):
+        raise ValueError(f"{callback!r} is not a method; pass a bound method or a name")
+
     method = get_bound_method(obj, name)
     # Bound methods are created on each access, so compare with ==, not `is`.
     if not isinstance(callback, str) and method != callback:
@@ -74,8 +79,17 @@ def method_name(obj: object, callback: str | Callable[..., Any]) -> str:
     return name
 
 
-def _callable_name(callback: Callable[..., Any]) -> str:
-    name = getattr(callback, "__name__", None)
-    if not isinstance(name, str):
-        raise ValueError(f"{callback!r} is not a method; pass a bound method or a name")
-    return name
+def resolve_callback(
+    callbacks: Mapping[str, Callable[..., Any]], target: object | None, name: str
+) -> Callable[..., Any] | None:
+    """Return the callback stored as ``name``, or ``None`` if nothing matches.
+
+    ``callbacks`` wins over a method of ``target`` with the same name.
+    """
+    handler = callbacks.get(name)
+    if handler is not None or target is None:
+        return handler
+    try:
+        return get_bound_method(target, name)
+    except (AttributeError, TypeError):
+        return None

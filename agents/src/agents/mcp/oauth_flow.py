@@ -36,7 +36,6 @@ _RESOURCE_PARAM_SINCE = "2025-06-18"
 _VERIFIER_ALPHABET = string.ascii_letters + string.digits + "-._~"
 _USABLE_AUTH_METHODS = (None, "none", "client_secret_post", "client_secret_basic")
 _SECRET_AUTH_METHODS = ("client_secret_post", "client_secret_basic")
-_FORM = {"content-type": "application/x-www-form-urlencoded"}
 
 
 @dataclass(slots=True, kw_only=True)
@@ -103,8 +102,6 @@ class OAuthFlow:
         # refresh tokens are single-use.
         self._lock = asyncio.Lock()
 
-    # On every request
-
     async def authorization(self) -> str | None:
         """Return ``Bearer <access token>``, if there are tokens."""
         if not self._tokens_loaded:
@@ -121,8 +118,6 @@ class OAuthFlow:
     async def _clear_tokens(self) -> None:
         await self.provider.clear_tokens()
         self._tokens, self._tokens_loaded = None, True
-
-    # Request A: a 401
 
     async def on_unauthorized(
         self,
@@ -343,12 +338,10 @@ class OAuthFlow:
         endpoint = discovery.endpoint("authorization", "/authorize", self._server_url)
         return f"{endpoint}?{urlencode(params)}"
 
-    # Request B: the callback
-
     async def exchange_code(self, *, code: str, state: str, iss: str | None) -> None:
         """Trade the authorization code for tokens and store them.
 
-        The PKCE verifier is deleted whether or not the exchange succeeds.
+        Deletes the PKCE verifier whether or not the exchange succeeds.
 
         Raises
         ------
@@ -390,8 +383,6 @@ class OAuthFlow:
         finally:
             await self.provider.delete_code_verifier(state)
 
-    # HTTP
-
     async def _get_json(self, url: str) -> tuple[int, dict[str, Any] | None]:
         request = HttpRequest(
             method="GET",
@@ -409,7 +400,7 @@ class OAuthFlow:
     async def _post_form(
         self, url: str, data: dict[str, str], info: OAuthClientInformation
     ) -> tuple[int, str]:
-        headers = dict(_FORM)
+        headers = {"content-type": "application/x-www-form-urlencoded"}
         method = info.get("token_endpoint_auth_method")
         secret = info.get("client_secret")
         if method == "client_secret_basic" and secret:
@@ -427,9 +418,6 @@ class OAuthFlow:
         )
         async with send_within_origin(self._http, request) as response:
             return response.status, await read_body(response)
-
-
-# Helpers on plain values
 
 
 def _origin(url: str) -> str:

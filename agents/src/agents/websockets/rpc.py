@@ -85,12 +85,6 @@ def callable(
     return decorate(fn) if fn is not None else decorate
 
 
-def callable_metadata(method: object) -> CallableMetadata | None:
-    """Return the metadata ``@callable`` recorded on ``method``, if any."""
-    metadata = getattr(method, _METADATA_ATTR, None)
-    return metadata if isinstance(metadata, CallableMetadata) else None
-
-
 def callable_methods(target: object) -> dict[str, CallableMetadata]:
     """Return ``target``'s ``@callable`` methods by name.
 
@@ -104,8 +98,8 @@ def callable_methods(target: object) -> dict[str, CallableMetadata]:
             if name in seen:
                 continue
             seen.add(name)
-            metadata = callable_metadata(value)
-            if metadata is not None:
+            metadata = getattr(value, _METADATA_ATTR, None)
+            if isinstance(metadata, CallableMetadata):
                 methods[name] = metadata
     return methods
 
@@ -151,8 +145,14 @@ class StreamingResponse:
         if self._closed:
             _log.warning("StreamingResponse.send() after the stream closed; dropped")
             return False
-        frame = {"type": "rpc", "id": self._id, "success": True, "done": False}
-        return _send(self._connection, to_json({**frame, "result": chunk}))
+        frame = {
+            "type": "rpc",
+            "id": self._id,
+            "success": True,
+            "done": False,
+            "result": chunk,
+        }
+        return _send(self._connection, to_json(frame))
 
     def end(self, final: Any = None) -> bool:
         """Close the stream, with an optional final result.

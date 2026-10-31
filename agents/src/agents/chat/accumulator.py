@@ -7,10 +7,10 @@ a tool result for a call in an earlier message. Works on wire-form
 dictionaries.
 """
 
-import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from ._json import dumps
 from .builder import BuilderScratch, apply_chunk_to_parts
 
 __all__ = ("ChunkAction", "ChunkResult", "StreamAccumulator")
@@ -178,7 +178,7 @@ class StreamAccumulator:
             case "error":
                 error = chunk.get("errorText")
                 if error is None:
-                    error = _dumps(chunk)
+                    error = dumps(chunk)
                 return ChunkResult(
                     handled=True, action=ChunkAction(type="error", error=error)
                 )
@@ -213,6 +213,7 @@ class StreamAccumulator:
                 ),
                 -1,
             )
+
         if self._pending is not None:
             pending, self._pending = self._pending, None
             self.parts[:] = list(messages[index]["parts"]) if index >= 0 else []
@@ -225,14 +226,9 @@ class StreamAccumulator:
                 self.message_id = messages[index]["id"]
             for chunk in pending:
                 self.apply_chunk(chunk)
+
         message_id = messages[index]["id"] if index >= 0 else self.message_id
-        partial: Message = {
-            "id": message_id,
-            "role": "assistant",
-            "parts": list(self.parts),
-        }
-        if self.metadata is not None:
-            partial["metadata"] = self.metadata
+        partial = {**self.to_message(), "id": message_id}
         if index >= 0:
             updated = list(messages)
             updated[index] = partial
@@ -248,7 +244,3 @@ class StreamAccumulator:
 
 def _as_metadata(value: Any) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
-
-
-def _dumps(value: Any) -> str:
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)

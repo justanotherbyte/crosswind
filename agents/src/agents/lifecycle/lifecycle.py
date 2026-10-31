@@ -144,7 +144,6 @@ class Lifecycle:
             reset=partial(_ffi.abort_without_alarm_retry, self._ctx),
         )
 
-    # Identity
     @property
     def name(self) -> str:
         """The name the Durable Object was addressed by (``ctx.id.name``).
@@ -166,7 +165,6 @@ class Lifecycle:
             "idFromString(), and names over 1,024 bytes don't expose ctx.id.name."
         )
 
-    # Installing capabilities
     def use(self, capability: LifecycleCapability) -> "Lifecycle":
         """Install a capability before startup.
 
@@ -204,7 +202,7 @@ class Lifecycle:
                 len(self._capabilities),
             )
             self._capabilities.insert(first_catch_all, capability)
-        capability._services = LifecycleServices(self, capability.capability_id)
+        capability._services = LifecycleServices(self, capability_id)
         return self
 
     def _check_catch_all(self, capability: LifecycleCapability) -> None:
@@ -225,7 +223,6 @@ class Lifecycle:
                     f"({rival.capability_id!r}); a second one could never be reached"
                 )
 
-    # Startup
     async def start(self) -> None:
         """Start capabilities and the host, once per wake.
 
@@ -290,7 +287,6 @@ class Lifecycle:
         finally:
             _startup_scope.reset(token)
 
-    # Entry points
     async def fetch(self, request: "Request") -> Response:
         """Handle an HTTP request or WebSocket upgrade for the object.
 
@@ -387,7 +383,6 @@ class Lifecycle:
         name = getattr(self._ctx.id, "name", None) or "<unnamed>"
         return f"{self.class_name}:{name}"
 
-    # Jobs and the alarm
     @property
     def jobs(self) -> LifecycleJobs:
         """The host's own view of the job queue; jobs go to ``host.on_job``."""
@@ -454,7 +449,6 @@ class Lifecycle:
         if hook is not None:
             await run_in_host_context(self._host, partial(hook, context))
 
-    # Teardown
     async def dispose(self) -> None:
         """Dispose capabilities in reverse installation order."""
         await run_without_host_context(self._runner.dispose)
@@ -465,7 +459,6 @@ class Lifecycle:
         async with self._rearm_lock:
             await self._ctx.storage.deleteAlarm()
 
-    # Host context, events, routing
     async def _run_in_host_boundary[T](
         self,
         fn: Callable[[], Awaitable[T]],
@@ -560,7 +553,6 @@ class Lifecycle:
             partial(self._runner.route, envelope.capability, context)
         )
 
-    # Composition-root setters (used by Agent)
     def _set_event_sink(self, sink: EventSink) -> None:
         self._event_sink = sink
 

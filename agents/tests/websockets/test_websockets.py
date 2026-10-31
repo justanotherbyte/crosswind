@@ -99,7 +99,6 @@ async def send(lifecycle: Lifecycle, server: FakeWebSocket, frame: Any) -> None:
     await lifecycle.websocket_message(server, json.dumps(frame))
 
 
-# Connecting
 def test_connect_sends_identity_then_runs_on_connect_in_host_context() -> None:
     lifecycle, _, recorder = setup()
 
@@ -227,7 +226,6 @@ def test_readonly_decision_sets_the_flag_before_on_connect() -> None:
     assert seen == [True, False]
 
 
-# State sync
 def test_client_state_is_saved_and_broadcast_to_everyone_else() -> None:
     lifecycle, _, state, _ = with_state({"n": 0})
 
@@ -294,7 +292,6 @@ def test_readonly_and_rejected_state_frames_get_state_errors(
     assert "negative" in caplog.text
 
 
-# Messages, close, errors
 def test_unconsumed_messages_reach_on_message_and_added_handlers_can_claim() -> None:
     claimed: list[Any] = []
 
@@ -358,7 +355,6 @@ def test_errors_reach_on_error() -> None:
     assert recorder.events[-1] == ("error", "boom")
 
 
-# Connections
 def test_broadcast_excludes_by_id_or_by_connection() -> None:
     lifecycle, websockets, _ = setup()
 

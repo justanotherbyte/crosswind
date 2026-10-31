@@ -66,10 +66,7 @@ def subscribe(
     In-process only, for tests and local debugging. Dispose the result to
     unsubscribe.
     """
-    emitter = _channels.get(channel)
-    if emitter is None:
-        emitter = _channels[channel] = Emitter()
-    return emitter.subscribe(listener)
+    return _channels.setdefault(channel, Emitter()).subscribe(listener)
 
 
 class LoggingObservability:

@@ -1,5 +1,6 @@
 from agents.sessions.chunking import split_content
-from agents.sessions.sanitize import byte_length, sanitize_message
+from agents.core.encoding import byte_length
+from agents.sessions.sanitize import sanitize_message
 from agents.sessions.tokens import (
     estimate_row_tokens,
     estimate_string_tokens,

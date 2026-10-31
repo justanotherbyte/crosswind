@@ -1,7 +1,7 @@
 """Converting chat models to and from their wire form (``.design/chat_engine.md`` §4.2).
 
 The SDK's chat machinery works on wire-form dictionaries (camelCase, as
-stored and sent); the typed chunks and messages are the public surface,
+stored and sent); the typed chunks and messages are the public API,
 converted here. Optional fields that are ``None`` (or a ``False`` flag) are
 left out; required fields are always written. A part that doesn't decode
 cleanly becomes `UnknownPart` and is written back exactly as it was.
@@ -104,9 +104,6 @@ def _fields(cls: Any) -> tuple[_Field, ...]:
     return tuple(out)
 
 
-# Encoding
-
-
 def chunk_to_wire(chunk: UIMessageChunk) -> dict[str, Any]:
     """Return a chunk's wire form (``type`` first, as the AI SDK writes it)."""
     if isinstance(chunk, Data):
@@ -163,14 +160,11 @@ def _record_to_wire(record: Any, skip: frozenset[str] = frozenset()) -> dict[str
             continue
         value = getattr(record, f.name)
         if not f.required and value is f.default:
-            continue  # optional and unset: left out on the wire
+            continue
         if f.nested and value is not None:
             value = _record_to_wire(value)
         out[f.wire] = value
     return out
-
-
-# Decoding
 
 
 def message_from_wire(message: Mapping[str, Any]) -> UIMessage:

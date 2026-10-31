@@ -4,8 +4,6 @@ import re
 
 __all__ = ("camel_case_to_kebab_case",)
 
-_UPPER = re.compile(r"[A-Z]")
-
 
 def camel_case_to_kebab_case(name: str) -> str:
     """Return ``name`` in kebab case, as upstream's ``camelCaseToKebabCase``.
@@ -15,7 +13,7 @@ def camel_case_to_kebab_case(name: str) -> str:
     """
     if name == name.upper() and name != name.lower():
         return name.lower().replace("_", "-")
-    kebab = _UPPER.sub(lambda match: f"-{match.group().lower()}", name)
+    kebab = re.sub(r"[A-Z]", lambda match: f"-{match.group().lower()}", name)
     kebab = kebab.removeprefix("-")
     kebab = kebab.replace("_", "-")
     return kebab.removesuffix("-")

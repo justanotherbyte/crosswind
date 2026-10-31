@@ -78,9 +78,6 @@ recovery continues the turn under a new request with the same
 """
 
 
-# Incoming frames
-
-
 @dataclass(slots=True, frozen=True)
 class ChatRequest:
     """``cf_agent_use_chat_request``: start a turn (``init`` is a ``RequestInit``)."""
@@ -207,9 +204,6 @@ def parse_protocol_message(raw: str) -> ChatProtocolEvent | None:
             messages = data.get("messages")
             return Messages(messages=messages if messages is not None else ())
     return None
-
-
-# Outgoing frames
 
 
 def send_if_open(connection: Connection, frame: dict[str, Any] | str) -> bool:

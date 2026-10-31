@@ -13,11 +13,11 @@ import asyncio
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, NamedTuple, override
 
 from ..core.events import Disposable
-from ..core.timing import to_seconds
+from ..core.timing import to_timedelta
 from ..core.types import Duration
 from ..lifecycle.capability import LifecycleCapability
 from ..lifecycle.types import JobContext, JobOutcome, Reschedule, RouteContext
@@ -48,7 +48,7 @@ class KeepAlive(LifecycleCapability):
 
     def __init__(self, *, interval: Duration = 30) -> None:
         super().__init__("keep-alive")
-        self._interval = timedelta(seconds=to_seconds(interval))
+        self._interval = to_timedelta(interval)
         self._refs = 0
         # Leases the root holds for its facets (in memory, like upstream), by
         # token.

@@ -1,8 +1,8 @@
 """The HTTP transport the client sends every request through.
 
-`HttpTransport` is the seam: the default `FetchTransport` uses the Workers
-``fetch`` (aborting on cancellation), and tests pass a transport that runs
-an ASGI app in-process (``.design/mcp_engine.md`` §3).
+Every request goes through an `HttpTransport`. The default `FetchTransport`
+uses the Workers ``fetch`` (aborting on cancellation), and tests pass a
+transport that runs an ASGI app in-process (``.design/mcp_engine.md`` §3).
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping

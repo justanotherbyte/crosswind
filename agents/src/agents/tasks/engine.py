@@ -93,8 +93,6 @@ class TaskStepEngine:
         if not self.is_current():
             raise AttemptSupersededError(self.run_id)
 
-    # Journal
-
     def read_step(self, name: str) -> TaskStepRow | None:
         """Return the journal row of step ``name``, or ``None``."""
         rows = self._store.sql(
@@ -221,8 +219,6 @@ class TaskStepEngine:
             self.run_id,
             name,
         )
-
-    # The run row
 
     def refresh_claim(self) -> None:
         """Move the run's claim deadline forward, at most every refresh window."""
