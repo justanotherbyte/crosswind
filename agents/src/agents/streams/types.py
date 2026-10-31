@@ -1,4 +1,4 @@
-"""Types for the Streams capability (``.design/streams_api.md`` §3)."""
+"""Specified in ``.design/streams_api.md`` §3."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,14 +65,10 @@ class StreamStatus:
     closed_at: datetime | None = None
 
 
+# .design/sql_schemas.md §6. While state is streaming, chunk_count and
+# updated_at are stale by design: appends write only the chunk log, whose tail
+# is the truth. The settle stamps both exactly.
 class StreamRow(TypedDict):
-    """A raw ``cf_agents_streams`` row (``.design/sql_schemas.md`` §6).
-
-    While ``state`` is ``streaming``, ``chunk_count`` and ``updated_at`` are
-    stale by design: appends write only the chunk log, whose tail is the
-    truth. The settle stamps both exactly.
-    """
-
     stream_id: str
     state: StreamState
     tag: str | None
@@ -85,8 +81,6 @@ class StreamRow(TypedDict):
 
 
 class StreamChunkRow(TypedDict):
-    """One chunk read back from the log, its value as JSON text (for chat)."""
-
     stream_id: str
     seq: int
     chunk: str

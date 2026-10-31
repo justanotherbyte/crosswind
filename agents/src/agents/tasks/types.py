@@ -1,4 +1,4 @@
-"""Types for the Tasks capability (``.design/tasks_engine.md``)."""
+"""Design: ``.design/tasks_engine.md``."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -47,13 +47,8 @@ type TaskRunState = Literal[
 ``cancelled``."""
 
 type TerminalTaskState = Literal["completed", "failed", "cancelled"]
-"""The states a run ends in."""
-
 type TaskWaitReason = Literal["sleep", "retry"]
-"""Why a waiting run is waiting."""
-
 type Backoff = Literal["constant", "linear", "exponential"]
-"""How a step's retry delay grows."""
 
 
 @dataclass(slots=True, kw_only=True)
@@ -78,8 +73,6 @@ class StepRetries:
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class ResolvedStepPolicy:
-    """A step's retry and timeout policy with every field resolved."""
-
     retry_limit: int
     retry_delay_ms: int
     backoff: Backoff
@@ -154,10 +147,7 @@ class TaskStep(Protocol):
 
 
 type TaskHandler = Callable[[Any, TaskStep], Awaitable[Any]]
-"""A task definition, called as ``handler(input, step)``."""
-
 type TaskErrorHandler = Callable[[Exception], Awaitable[None]]
-"""Observes a run's terminal failure."""
 
 
 @dataclass(slots=True, kw_only=True)
@@ -267,9 +257,8 @@ type TaskRun[Out] = (
 """A snapshot of one run; narrow it with ``match`` or ``isinstance``."""
 
 
+# Schema: ``.design/sql_schemas.md`` §5.
 class TaskRunRow(TypedDict):
-    """A raw ``cf_agents_task_runs`` row (``.design/sql_schemas.md`` §5)."""
-
     run_id: str
     definition: str
     input: str | None
@@ -294,8 +283,6 @@ class TaskRunRow(TypedDict):
 
 
 class TaskStepRow(TypedDict):
-    """A raw ``cf_agents_task_steps`` row."""
-
     run_id: str
     step_name: str
     kind: Literal["do", "sleep"]
@@ -312,35 +299,26 @@ class TaskStepRow(TypedDict):
 
 
 class TaskWakePayload(TypedDict):
-    """What a run's wake job carries.
-
-    ``owner_path`` / ``owner_path_key`` are set on the root's mirror of a
-    facet's run: the run and its journal live on that facet.
-    """
-
     run_id: str
+    # Set on the root's mirror of a facet's run. The run and its journal live
+    # on that facet.
     owner_path: str | None
     owner_path_key: str | None
 
 
 class SyncWakeMessage(TypedDict):
-    """A facet mirroring a run's next wake (epoch ms; ``None`` cancels it)."""
-
     type: Literal["sync_wake"]
     run_id: str
-    next_ms: int | None
+    next_ms: int | None  # None cancels the root's mirror wake
 
 
+# The facet answers with the run's next wake.
 class DispatchMessage(TypedDict):
-    """The root asking a facet to run one due run; it answers with the next wake."""
-
     type: Literal["dispatch"]
     run_id: str
 
 
 class MemoryLimitMessage(TypedDict):
-    """The root forwarding a memory-limit strike on a facet run's mirror job."""
-
     type: Literal["memory_limit"]
     run_id: str
     sealed: bool
@@ -348,7 +326,4 @@ class MemoryLimitMessage(TypedDict):
 
 
 type TaskRouteMessage = SyncWakeMessage | DispatchMessage | MemoryLimitMessage
-"""A Tasks message routed between a facet and the root."""
-
 type MemoryLimitHandler = Callable[[MemoryLimitContext], Awaitable[None]]
-"""The host's memory-limit hook, for strikes on its runs that the root saw."""

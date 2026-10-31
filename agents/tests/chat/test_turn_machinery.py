@@ -404,7 +404,7 @@ def test_parked_connections_are_released_when_no_stream_starts() -> None:
     assert turns.park(parked, "p") is True
     assert turns.settle("r1") is False
     assert turns.settle("r2") is True
-    turns.release_awaiting()
+    turns.release_parked()
     assert parked.sent == [
         pending_frame("r2", "p"),
         {"type": "cf_agent_stream_resume_none"},

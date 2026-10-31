@@ -1,10 +1,9 @@
-"""SQL storage for Streams: the stream rows and their block-packed chunk logs.
+"""Port of the storage half of upstream ``streams/streams.ts``.
 
-Port of the storage half of upstream ``streams/streams.ts``
-(``.design/streams_engine.md``, ``.design/sql_schemas.md`` §6). A block's
+See ``.design/streams_engine.md`` and ``.design/sql_schemas.md`` §6. A block's
 ``body`` is its chunks' JSON texts joined by ``,``, covering the half-open
-``seq`` range ``[seq_from, seq_to)``; an append grows the last block or
-starts the next one, so every append is one billed row write.
+``seq`` range ``[seq_from, seq_to)``; an append grows the last block or starts
+the next one, so every append is one billed row write.
 """
 
 import json
@@ -15,12 +14,11 @@ from ..core.sql import Sql
 from ..core.timing import now_ms
 from .types import StreamRow, StreamState
 
-__all__ = ("BLOCK_MAX_CHARS", "StreamStore", "Tail")
+__all__ = ("BLOCK_MAX_CHARS", "StoredChunk", "StreamStore", "Tail")
 
+# Well under the 2 MiB row limit, so a 1 MiB chunk always fits in a fresh block,
+# and small enough that a replay page parses one block at a time.
 BLOCK_MAX_CHARS = 256 * 1024
-"""A block grows until its body would pass this many characters. Well under
-the 2 MiB row limit, so a 1 MiB chunk always fits in a fresh block, and small
-enough that a replay page parses one block at a time."""
 
 # The stream table stays a rowid table: rowid breaks "newest first" ties in
 # insertion order when streams share a created_at millisecond.
@@ -55,10 +53,14 @@ _ROW_COLUMNS = """stream_id, state, tag, metadata, error_message, chunk_count,
 
 
 class Tail(NamedTuple):
-    """The chunk log's tail: the next ``seq``, and the newest chunk's time."""
-
     next_seq: int
     last_chunk_at: int | None
+
+
+class StoredChunk(NamedTuple):
+    seq: int
+    value: Any
+    block_updated_at: int
 
 
 class _Block(NamedTuple):
@@ -69,22 +71,16 @@ class _Block(NamedTuple):
 
 
 class StreamStore:
-    """Every SQL statement Streams runs."""
-
     __slots__ = ("sql",)
 
     def __init__(self, sql: Sql) -> None:
         self.sql = sql
 
     def ensure_tables(self) -> None:
-        """Create the tables and the tag index (idempotent)."""
         for statement in (_STREAMS, _STREAMS_BY_TAG, _BLOCKS):
             self.sql(statement)
 
-    # Stream rows
-
     def get(self, stream_id: str) -> StreamRow | None:
-        """Return one stream's row."""
         rows = self.sql(
             "SELECT " + _ROW_COLUMNS + " FROM cf_agents_streams WHERE stream_id = ?",
             stream_id,
@@ -92,15 +88,15 @@ class StreamStore:
         )
         return rows[0] if rows else None
 
+    # The append fence reads only the state.
     def state(self, stream_id: str) -> StreamState | None:
-        """Return one stream's state alone (the append fence's read)."""
         rows = self.sql(
             "SELECT state FROM cf_agents_streams WHERE stream_id = ?", stream_id
         )
         return rows[0]["state"] if rows else None
 
+    # Callers check that the stream doesn't exist yet.
     def insert(self, stream_id: str, tag: str | None, metadata: str | None) -> None:
-        """Insert a ``streaming`` row (callers check it doesn't exist)."""
         now = now_ms()
         self.sql(
             "INSERT INTO cf_agents_streams (stream_id, state, tag, metadata,"
@@ -114,7 +110,6 @@ class StreamStore:
         )
 
     def set_metadata(self, stream_id: str, metadata: str | None) -> None:
-        """Replace a row's metadata, whatever its state."""
         self.sql(
             "UPDATE cf_agents_streams SET metadata = ? WHERE stream_id = ?",
             metadata,
@@ -122,10 +117,6 @@ class StreamStore:
         )
 
     def settle(self, stream_id: str, state: StreamState, reason: str | None) -> bool:
-        """End a ``streaming`` stream, stamping its exact final count.
-
-        Returns whether this call made the transition.
-        """
         now = now_ms()
         return bool(
             self.sql(
@@ -142,7 +133,6 @@ class StreamStore:
         )
 
     def delete(self, stream_id: str) -> bool:
-        """Delete a stream's blocks and row; ``False`` if there was no row."""
         self.sql("DELETE FROM cf_agents_stream_blocks WHERE stream_id = ?", stream_id)
         return bool(
             self.sql(
@@ -154,7 +144,6 @@ class StreamStore:
     def list(
         self, states: Sequence[StreamState] | None, tag: str | None, limit: int
     ) -> Sequence[StreamRow]:
-        """Return rows newest first, optionally filtered."""
         encoded = json.dumps(list(states)) if states else None
         return self.sql(
             "SELECT " + _ROW_COLUMNS + " FROM cf_agents_streams"
@@ -170,7 +159,6 @@ class StreamStore:
         )
 
     def all_rows(self) -> Sequence[StreamRow]:
-        """Return every row, newest first (ties in insertion order)."""
         return self.sql(
             "SELECT " + _ROW_COLUMNS + " FROM cf_agents_streams"
             " ORDER BY created_at DESC, rowid DESC",
@@ -178,7 +166,6 @@ class StreamStore:
         )
 
     def rows_by_tag(self, tag: str, state: StreamState | None) -> Sequence[StreamRow]:
-        """Return the rows with ``tag``, newest first, optionally of one state."""
         return self.sql(
             "SELECT " + _ROW_COLUMNS + " FROM cf_agents_streams"
             " WHERE tag = ? AND (? IS NULL OR state = ?)"
@@ -189,21 +176,13 @@ class StreamStore:
             row=StreamRow,
         )
 
-    # The chunk log
-
     def tail(self, stream_id: str) -> Tail:
-        """Return the log's tail (the source of truth while a stream is live)."""
         block = self._last_block(stream_id)
         if block is None:
             return Tail(next_seq=0, last_chunk_at=None)
         return Tail(next_seq=block.seq_to, last_chunk_at=block.updated_at)
 
     def write_chunk(self, stream_id: str, chunk_json: str, at: int) -> int:
-        """Append one serialized chunk and return its ``seq``.
-
-        One row either way: an ``UPDATE`` growing the last block, or the
-        ``INSERT`` of the next one.
-        """
         last = self._last_block(stream_id)
         seq = last.seq_to if last is not None else 0
         if last is not None and last.length + len(chunk_json) + 1 <= BLOCK_MAX_CHARS:
@@ -231,14 +210,7 @@ class StreamStore:
             )
         return seq
 
-    def chunks(
-        self, stream_id: str, start: int, limit: int
-    ) -> Iterator[tuple[int, Any, int]]:
-        """Yield up to ``limit`` chunks from ``start`` as ``(seq, value, time)``.
-
-        Parses one block at a time: ``[body]`` is the block's chunks as a JSON
-        array. ``time`` is the block's last write.
-        """
+    def chunks(self, stream_id: str, start: int, limit: int) -> Iterator[StoredChunk]:
         block = -1
         count = 0
         while count < limit:
@@ -259,7 +231,7 @@ class StreamStore:
             for seq in range(max(start, row["seq_from"]), row["seq_to"]):
                 if count == limit:
                     return
-                yield seq, values[seq - row["seq_from"]], row["updated_at"]
+                yield StoredChunk(seq, values[seq - row["seq_from"]], row["updated_at"])
                 count += 1
 
     def _last_block(self, stream_id: str) -> _Block | None:

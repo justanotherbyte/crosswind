@@ -1,7 +1,4 @@
-"""Stubs for calling agents over native RPC: ``await stub.method(*args)``.
-
-Arguments and results are converted with the Workers SDK's RPC rules.
-"""
+"""Arguments and results are converted with the Workers SDK's RPC rules."""
 
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -45,16 +42,6 @@ class AgentStub:
 
 
 class PathStub:
-    """A stub for an agent reached through the root (a facet parent).
-
-    Parameters
-    ----------
-    root
-        The root agent's stub.
-    path
-        The target agent's path, root first.
-    """
-
     __slots__ = ("_path", "_root")
 
     def __init__(self, root: Any, path: list[AgentPathStep]) -> None:
@@ -62,7 +49,6 @@ class PathStub:
         self._path = path_to_json(path)
 
     def __getattr__(self, method: str) -> Callable[..., Coroutine[Any, Any, Any]]:
-        """Return an async function calling ``method`` on the agent."""
         if method.startswith("__"):
             raise AttributeError(method)
 
@@ -74,22 +60,9 @@ class PathStub:
         return call
 
 
+# Each call is one extra hop through the parent, and the parent's
+# on_before_sub_agent gate doesn't run.
 class SubAgentStub:
-    """A stub for a sub-agent, through its parent (``get_sub_agent_by_name``).
-
-    Each call is one extra hop through the parent; the parent's
-    ``on_before_sub_agent`` gate doesn't run.
-
-    Parameters
-    ----------
-    parent
-        The parent agent's stub.
-    class_name
-        The sub-agent's class name.
-    name
-        The sub-agent's name.
-    """
-
     __slots__ = ("_class_name", "_name", "_parent")
 
     def __init__(self, parent: Any, class_name: str, name: str) -> None:
@@ -98,7 +71,6 @@ class SubAgentStub:
         self._name = name
 
     def __getattr__(self, method: str) -> Callable[..., Coroutine[Any, Any, Any]]:
-        """Return an async function calling ``method`` on the sub-agent."""
         if method.startswith("__"):
             raise AttributeError(method)
 

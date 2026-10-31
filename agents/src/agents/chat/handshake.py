@@ -1,11 +1,7 @@
-"""The server side of the stream resume handshake (wire protocol §7.4).
+"""Wire protocol §7.4, ported from upstream ``chat/resume-handshake.ts``.
 
-Port of upstream ``chat/resume-handshake.ts`` and ``chat/pre-stream-turns.ts``.
-A reconnecting client asks whether a turn is in flight; the server offers
-the active stream (``resuming``), tells it to keep waiting for a turn that
-hasn't started streaming (``pending``), replays a terminal error it missed,
-or says there's nothing (``resume_none``). The frames match upstream's
-frozen fixture byte for byte.
+`PreStreamTurns` ports ``chat/pre-stream-turns.ts``. The frames match
+upstream's frozen fixture byte for byte.
 
 Not yet ported (12c): the branches for a tool continuation turn.
 """
@@ -28,31 +24,21 @@ from .terminal import TerminalRecord
 __all__ = ("PreStreamTurns", "ResumeHandshake")
 
 
+# Kept in memory only, because a turn between acceptance and its first chunk
+# keeps the Durable Object awake.
 class PreStreamTurns:
-    """Accepted turns that haven't started streaming, and clients waiting on them.
-
-    Between a send being accepted and its first chunk (queued, debouncing,
-    or in ``on_chat_message``'s setup), a reconnecting client is parked
-    here and told to keep waiting. Parked clients are offered the stream
-    when it starts, or released once every accepted turn has settled without
-    one. In memory only: a turn in that window keeps the object awake.
-    """
-
-    __slots__ = ("_accepted", "_latest_request_id", "awaiting")
+    __slots__ = ("_accepted", "_latest_request_id", "parked")
 
     def __init__(self) -> None:
         self._accepted: set[str] = set()
         self._latest_request_id: str | None = None
-        self.awaiting: dict[str, Connection] = {}
-        """Parked connections, by id."""
+        self.parked: dict[str, Connection] = {}
 
     def begin(self, request_id: str) -> None:
-        """Mark an accepted turn as in flight."""
         self._accepted.add(request_id)
         self._latest_request_id = request_id
 
     def settle(self, request_id: str) -> bool:
-        """Mark an accepted turn as settled; return whether none remain."""
         self._accepted.discard(request_id)
         if self._accepted:
             return False
@@ -60,66 +46,36 @@ class PreStreamTurns:
         return True
 
     def has_in_flight(self) -> bool:
-        """Whether an accepted turn hasn't settled."""
         return bool(self._accepted)
 
     def park(self, connection: Connection, probe_id: str | None = None) -> bool:
-        """Park a connection and send it ``stream_pending``, if a turn is in flight.
-
-        Parked connections still get live broadcasts until they're offered
-        the stream.
-        """
         if not self._accepted:
             return False
-        self.awaiting[connection.id] = connection
+        # Parked connections still get live broadcasts until they're offered the stream.
+        self.parked[connection.id] = connection
         send_if_open(connection, _pending_frame(self._latest_request_id, probe_id))
         return True
 
     def release(self, connection_id: str) -> None:
-        """Forget one connection (it closed)."""
-        self.awaiting.pop(connection_id, None)
+        self.parked.pop(connection_id, None)
 
     def flush_on_stream_start(self, notify: Callable[[Connection], None]) -> None:
-        """Hand every parked connection to ``notify`` (a stream started)."""
-        awaiting, self.awaiting = self.awaiting, {}
-        for connection in awaiting.values():
+        parked, self.parked = self.parked, {}
+        for connection in parked.values():
             notify(connection)
 
-    def release_awaiting(self) -> None:
-        """Send ``resume_none`` to every parked connection and forget them."""
-        awaiting, self.awaiting = self.awaiting, {}
-        for connection in awaiting.values():
+    def release_parked(self) -> None:
+        parked, self.parked = self.parked, {}
+        for connection in parked.values():
             send_if_open(connection, {"type": STREAM_RESUME_NONE})
 
     def reset(self) -> None:
-        """Forget everything, without sending frames (a chat clear)."""
         self._accepted.clear()
-        self.awaiting.clear()
+        self.parked.clear()
         self._latest_request_id = None
 
 
 class ResumeHandshake:
-    """Answers a client's resume request and ACK.
-
-    Parameters
-    ----------
-    stream
-        The agent's resumable streams.
-    pre_stream
-        Its accepted turns that haven't started streaming.
-    pending_resume
-        Ids of connections offered the stream but not yet ACKed; they're
-        left out of live broadcasts until their replay. Shared with the
-        agent's broadcast path.
-    pending_terminal
-        Read the stored terminal record.
-    persist_orphaned_stream
-        Save the partial message of a stream nothing produces any more.
-    holds_terminal_frames
-        Whether the agent still holds a request's terminal frames (its
-        message is being saved; they follow live).
-    """
-
     __slots__ = (
         "_holds_terminal_frames",
         "_pending_resume",
@@ -141,6 +97,8 @@ class ResumeHandshake:
     ) -> None:
         self._stream = stream
         self._pre_stream = pre_stream
+        # Connections offered the stream but not yet ACKed. The agent's broadcast
+        # path shares this set and skips them until their replay.
         self._pending_resume = pending_resume
         self._pending_terminal = pending_terminal
         self._persist_orphaned_stream = persist_orphaned_stream
@@ -149,11 +107,8 @@ class ResumeHandshake:
     def notify_stream_resuming(
         self, connection: Connection, probe_id: str | None = None
     ) -> None:
-        """Offer the active stream to a connection (``stream_resuming``).
-
-        A connection may be offered it twice (on connect and in reply to its
-        request); that's intended, and the client de-duplicates its ACK.
-        """
+        # A connection may be offered the stream twice, on connect and in reply
+        # to its request. The client de-duplicates its ACK.
         request_id = self._stream.active_request_id
         if request_id is None:
             return
@@ -163,7 +118,6 @@ class ResumeHandshake:
     async def handle_resume_request(
         self, connection: Connection, probe_id: str | None = None
     ) -> None:
-        """Answer ``cf_agent_stream_resume_request``."""
         if self._stream.has_active_stream():
             self.notify_stream_resuming(connection, probe_id)
             return
@@ -182,7 +136,6 @@ class ResumeHandshake:
         send_if_open(connection, frame)
 
     async def handle_resume_ack(self, connection: Connection, request_id: str) -> None:
-        """Answer ``cf_agent_stream_resume_ack``: replay ``request_id``."""
         stream = self._stream
         self._pending_resume.discard(connection.id)
         if stream.has_active_stream():
@@ -192,6 +145,7 @@ class ResumeHandshake:
             if orphaned is not None:
                 await self._persist_orphaned_stream(orphaned)
             return
+        # Its message is still being saved, and its terminal frames follow live.
         if self._holds_terminal_frames(request_id):
             stream.replay_closed_stream_chunks(connection, request_id)
             return

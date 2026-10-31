@@ -1,7 +1,6 @@
-"""An incremental Server-Sent Events decoder (the WHATWG event stream format).
+"""Streamable HTTP servers may answer a POST with ``text/event-stream``.
 
-Streamable HTTP servers answer a POST with ``text/event-stream`` when they
-stream, and the GET listener is one long event stream
+The GET listener is one long event stream, in the WHATWG format
 (``.design/mcp_engine.md`` §4.4).
 """
 
@@ -14,42 +13,25 @@ from .errors import MCPProtocolError
 
 __all__ = ("MAX_EVENT_SIZE", "SseEvent", "iter_events")
 
-MAX_EVENT_SIZE = 1024 * 1024
-"""The largest event accepted, in characters (the SDK's 1 MiB limit)."""
+MAX_EVENT_SIZE = 1024 * 1024  # characters, as the SDK's 1 MiB limit
 
 _LINE_END = re.compile(r"\r\n|\r|\n")
 
 
 @dataclass(slots=True, kw_only=True)
 class SseEvent:
-    """One dispatched event.
-
-    Parameters
-    ----------
-    event
-        The event type (``message`` when the stream doesn't name one).
-    data
-        The data lines, joined with newlines. Empty for a priming event.
-    id
-        The last event id seen on the stream, if any.
-    retry
-        The reconnection delay the server asked for, in milliseconds.
-    """
-
     event: str = "message"
     data: str = ""
     id: str | None = None
-    retry: int | None = None
+    retry_ms: int | None = None
 
 
 class _Decoder:
-    """Turns lines into events; owns the fields of the event being built."""
-
-    __slots__ = ("_data", "_event", "_id", "_retry", "_size")
+    __slots__ = ("_data", "_event", "_id", "_retry_ms", "_size")
 
     def __init__(self) -> None:
         self._id: str | None = None
-        self._retry: int | None = None
+        self._retry_ms: int | None = None
         self._reset()
 
     def _reset(self) -> None:
@@ -76,7 +58,7 @@ class _Decoder:
         elif name == "id" and "\0" not in value:
             self._id = value
         elif name == "retry" and value.isascii() and value.isdigit():
-            self._retry = int(value)
+            self._retry_ms = int(value)
         return None
 
     def _dispatch(self) -> SseEvent | None:
@@ -89,24 +71,14 @@ class _Decoder:
             event=self._event or "message",
             data="\n".join(self._data),
             id=self._id,
-            retry=self._retry,
+            retry_ms=self._retry_ms,
         )
         self._reset()
         return event
 
 
+# The format drops an event that the end of the stream cuts off.
 async def iter_events(chunks: AsyncIterable[bytes]) -> AsyncIterator[SseEvent]:
-    """Yield the events in a byte stream, as they complete.
-
-    Lines may end in CR, LF or CRLF, and chunks may split anywhere, including
-    inside a UTF-8 sequence. An event the stream ends in the middle of is
-    dropped, as the format requires.
-
-    Raises
-    ------
-    MCPProtocolError
-        If one event's data is larger than `MAX_EVENT_SIZE`.
-    """
     decoder = _Decoder()
     text = codecs.getincrementaldecoder("utf-8")(errors="replace")
     buffer = ""

@@ -1,9 +1,7 @@
-"""Durable state: the State capability.
+"""Port of upstream ``state/index.ts``.
 
-Port of upstream ``state/index.ts``. State owns the ``cf_agents_state`` row,
-lazy loading with an in-memory cache, and validated persistence. Validation
-and the change hook stay on the host, which passes them in; State never
-touches connections (``.design/agent_api.md`` §1.6).
+Validation and the change hook stay on the host, which passes them in. State
+never touches connections (``.design/agent_api.md`` §1.6).
 """
 
 import json
@@ -101,7 +99,6 @@ class State[T](LifecycleCapability):
         return self._state
 
     def _initial_value(self) -> T | None:
-        """Return the state to seed when nothing is stored."""
         return self._initial_state
 
     def _reset_corrupt_state(self) -> T | None:

@@ -1,4 +1,4 @@
-"""Types for the Sessions capability (``.design/sessions_api.md`` §3)."""
+"""Specified in ``.design/sessions_api.md`` §3."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass

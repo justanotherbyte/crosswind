@@ -1,8 +1,7 @@
-"""Shared building blocks used across the SDK (upstream ``core/``).
+"""Upstream ``core/``.
 
-``__all__`` lists the public names, which ``agents`` re-exports. Internal
-helpers (method lookup, time conversion, the retry engine, ``Emitter``) are
-imported from their own modules.
+Only public names are re-exported here. Import internal helpers from their
+own modules.
 """
 
 from .errors import AgentsException, SqlError

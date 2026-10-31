@@ -1,8 +1,7 @@
-"""Typed, synchronous SQL over a Durable Object's SQLite storage.
+"""Runs on the raw JS storage, not the Workers SDK's wrapper: a hot path.
 
 Replaces upstream's ``this.sql`` tagged template with ``?`` placeholders
-(``.design/utilities.md`` §6). Runs on the raw JS storage, not the Workers
-SDK's wrapper, because this is a hot path (§3.8 there).
+(``.design/utilities.md`` §6 and §3.8).
 """
 
 from collections.abc import Mapping, Sequence

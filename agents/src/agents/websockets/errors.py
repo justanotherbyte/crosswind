@@ -1,5 +1,3 @@
-"""Exceptions raised by the WebSockets capability and connections."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("ConnectionStateTooLargeError", "DuplicateConnectionIdError")

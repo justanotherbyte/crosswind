@@ -1,17 +1,18 @@
-"""The ``cf_agents_mcp_servers`` table: one row per registered server.
+"""Upstream's table, so a Durable Object can move between the TS and Python SDKs.
 
 The table, the schema version key and the ``server_options`` JSON are
-exactly upstream's (``client/storage.ts``, ``client/index.ts:357``), so a
-Durable Object can move between the TypeScript and Python SDKs
-(``.design/mcp_engine.md`` §6.2).
+exactly upstream's (``client/storage.ts``, ``client/index.ts:357``). See
+``.design/mcp_engine.md`` §6.2.
 """
 
 import json
 from typing import Any, TypedDict
 
+from ..core.encoding import to_json
 from ..core.sql import Sql
 from ..core.timing import to_milliseconds
 from ..core.types import RetryOptions
+from .session import MODERN_VERSIONS
 from .types import MCPServerRecord, SessionSnapshot
 
 __all__ = ("McpServerStore", "encode_options")
@@ -19,7 +20,10 @@ __all__ = ("McpServerStore", "encode_options")
 _SCHEMA_VERSION_KEY = "cf_agents:mcp_schema_version"
 _SCHEMA_VERSION = 1
 
-_MODERN_VERSION = "2026-07-28"
+_SELECT = (
+    "SELECT id, name, server_url, callback_url, client_id, auth_url,"
+    " server_options FROM cf_agents_mcp_servers"
+)
 
 
 class _Row(TypedDict):
@@ -33,22 +37,13 @@ class _Row(TypedDict):
 
 
 class McpServerStore:
-    """Reads and writes stored servers.
-
-    Parameters
-    ----------
-    sql
-        The host's typed SQL.
-    """
-
     __slots__ = ("_sql",)
 
     def __init__(self, sql: Sql) -> None:
         self._sql = sql
 
-    async def ensure_schema(self, storage: Any) -> None:
-        """Create the table on first use (``storage`` is the host's KV)."""
-        version = await storage.get(_SCHEMA_VERSION_KEY) or 0
+    async def ensure_schema(self, kv: Any) -> None:
+        version = await kv.get(_SCHEMA_VERSION_KEY) or 0
         if version >= _SCHEMA_VERSION:
             return
         self._sql(
@@ -61,29 +56,17 @@ class McpServerStore:
             " auth_url TEXT,"
             " server_options TEXT)"
         )
-        await storage.put(_SCHEMA_VERSION_KEY, _SCHEMA_VERSION)
+        await kv.put(_SCHEMA_VERSION_KEY, _SCHEMA_VERSION)
 
     def records(self) -> list[MCPServerRecord]:
-        """Return every stored server, in insertion order."""
-        rows = self._sql(
-            "SELECT id, name, server_url, callback_url, client_id, auth_url,"
-            " server_options FROM cf_agents_mcp_servers ORDER BY rowid",
-            row=_Row,
-        )
+        rows = self._sql(f"{_SELECT} ORDER BY rowid", row=_Row)
         return [_record(row) for row in rows]
 
     def get(self, server_id: str) -> MCPServerRecord | None:
-        """Return the stored server ``server_id``, if there is one."""
-        rows = self._sql(
-            "SELECT id, name, server_url, callback_url, client_id, auth_url,"
-            " server_options FROM cf_agents_mcp_servers WHERE id = ?",
-            server_id,
-            row=_Row,
-        )
+        rows = self._sql(f"{_SELECT} WHERE id = ?", server_id, row=_Row)
         return _record(rows[0]) if rows else None
 
     def save(self, record: MCPServerRecord) -> None:
-        """Insert or replace ``record``'s row."""
         self._sql(
             "INSERT OR REPLACE INTO cf_agents_mcp_servers"
             " (id, name, server_url, client_id, auth_url, callback_url,"
@@ -94,15 +77,13 @@ class McpServerStore:
             record.client_id,
             record.auth_url,
             record.callback_url,
-            json.dumps(record.options, separators=(",", ":")),
+            to_json(record.options),
         )
 
     def delete(self, server_id: str) -> None:
-        """Delete the server's row."""
         self._sql("DELETE FROM cf_agents_mcp_servers WHERE id = ?", server_id)
 
     def set_auth(self, server_id: str, *, auth_url: str, client_id: str | None) -> None:
-        """Record a pending authorization."""
         self._sql(
             "UPDATE cf_agents_mcp_servers SET auth_url = ?, client_id = ? WHERE id = ?",
             auth_url,
@@ -111,13 +92,12 @@ class McpServerStore:
         )
 
     def clear_auth_url(self, server_id: str) -> None:
-        """Forget the pending authorization URL."""
         self._sql(
             "UPDATE cf_agents_mcp_servers SET auth_url = NULL WHERE id = ?", server_id
         )
 
+    # Upstream withMcpSession.
     def update_session(self, server_id: str, snapshot: SessionSnapshot | None) -> None:
-        """Store or clear the negotiated session (upstream ``withMcpSession``)."""
         record = self.get(server_id)
         if record is None:
             return
@@ -135,13 +115,13 @@ class McpServerStore:
         self.save(record)
 
 
+# Upstream's server_options shape.
 def encode_options(
     *,
     transport_type: str,
     headers: dict[str, str],
     retry: RetryOptions | None,
 ) -> dict[str, Any]:
-    """Return a new server's ``server_options``, in upstream's shape."""
     transport: dict[str, Any] = {"type": transport_type}
     if headers:
         transport["headers"] = headers
@@ -174,7 +154,7 @@ def _decode_options(value: str | None) -> dict[str, Any]:
     transport = options.get("transport") or {}
     version = transport.get("protocolVersion")
     stateless_without_prior = (
-        version == _MODERN_VERSION and "discoverResult" not in options
+        version in MODERN_VERSIONS and "discoverResult" not in options
     )
     if transport.get("sessionId") and (not version or stateless_without_prior):
         transport.pop("sessionId", None)

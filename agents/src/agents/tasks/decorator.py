@@ -1,9 +1,8 @@
-"""``@task``: task definitions as methods, and the handles they return.
+"""Python's form of upstream's ``taskDefinitions`` map and ``tasks.handle()``.
 
-Python's form of upstream's ``taskDefinitions`` map and ``tasks.handle()``
-(``.design/scheduling_queue_tasks_api.md`` §2.4, §2.11). The decorator
-marks a method; ``Tasks(target=obj)`` collects it; accessing it on ``obj``
-returns a `TaskHandle` bound to that capability.
+The decorator marks a method; ``Tasks(target=obj)`` collects it; accessing it
+on ``obj`` returns a `TaskHandle` bound to that capability
+(``.design/scheduling_queue_tasks_api.md`` §2.4, §2.11).
 """
 
 import inspect

@@ -1,4 +1,4 @@
-"""Durable incremental output (upstream ``agents/streams``)."""
+"""Port of upstream ``agents/streams``."""
 
 from .errors import StreamClosedError, StreamNotFoundError, StreamSerializationError
 from .streams import DEFAULT_MAX_CHUNK_BYTES, Streams, StreamWriter

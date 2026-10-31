@@ -1,10 +1,8 @@
-"""Virtual connections: a facet's view of client sockets the root owns.
+"""Port of the virtual-connection half of upstream ``dynamic-agents.ts``.
 
-Port of the virtual-connection half of upstream ``dynamic-agents.ts``. The
-root keeps every native socket; a facet sees a `VirtualConnection` with the
-same API, whose operations go back through the live event's bridge or, after
-that event has returned, through the root over RPC
-(``.design/subagents_engine.md`` §2, §3.2 items 3-5).
+The root keeps every native socket. A facet's connection operations go back
+through the live event's bridge or, after that event has returned, through
+the root over RPC (``.design/subagents_engine.md`` §2, §3.2 items 3-5).
 """
 
 from typing import TYPE_CHECKING, Any
@@ -24,27 +22,15 @@ __all__ = (
     "VirtualConnection",
 )
 
+# The root needs the client's full URL to forward a socket's events.
 OUTER_URL_FLAG = "sub_agent_outer_url"
-"""On a root socket: the client's full URL, so events can be forwarded."""
-
+# Frames still in flight for a deleted sub-agent are dropped.
 DELETED_FLAG = "sub_agent_deleted"
-"""On a root socket: its sub-agent was deleted; stale frames are dropped."""
-
 TAGS_FLAG = "sub_agent_tags"
-"""On a root socket: the tags the sub-agent's ``get_connection_tags`` chose."""
-
 ROOT_ONLY_FLAGS = frozenset({OUTER_URL_FLAG, DELETED_FLAG})
-"""Flags the root keeps for itself and never forwards to a sub-agent."""
 
 
 class VirtualConnection(Connection):
-    """A client connection whose socket lives on the root agent.
-
-    Reads come from the metadata forwarded with each event; writes
-    (``send``, ``close``, ``set_state``, flags) are queued, in order, to the
-    root. Equal when the ids are equal (there's no local socket).
-    """
-
     __slots__ = ("_engine", "_meta")
 
     def __init__(self, engine: "SubAgentsEngine", meta: ForwardedConnection) -> None:
@@ -84,37 +70,42 @@ class VirtualConnection(Connection):
         self._engine.route_operation(self._id, "set_state", state, flags)
 
     def send(self, message: str | bytes) -> None:
-        """Send a frame to the client (through the root, in order)."""
         self._engine.route_operation(self._id, "send", message)
 
     def close(self, code: int | None = None, reason: str | None = None) -> None:
-        """Close the client's socket (through the root, in order)."""
         self._engine.route_operation(self._id, "close", code, reason)
 
+    # There's no local socket to compare, so the id is the identity.
     def __eq__(self, other: object) -> bool:
-        """Return whether ``other`` is the same client connection."""
         return isinstance(other, VirtualConnection) and other._id == self._id
 
     def __hash__(self) -> int:
-        """Hash the connection id."""
         return hash(self._id)
 
 
-def forwarded_state(connection: Connection) -> tuple[Any, dict[str, Any]]:
-    """Return what a sub-agent sees of a connection: its state and flags."""
+def forwarded_meta(
+    connection: Connection, uri: str, request_headers: list[list[str]] | None
+) -> ForwardedConnection:
     attachment = connection._attachment()
     flags = {
         key: value
         for key, value in attachment.get("__flags", {}).items()
         if key not in ROOT_ONLY_FLAGS
     }
-    return attachment.get("__user"), flags
+    tags = flags.pop(TAGS_FLAG, None)
+    return ForwardedConnection(
+        id=connection.id,
+        uri=uri,
+        tags=tags if isinstance(tags, list) else list(connection.tags),
+        state=attachment.get("__user"),
+        flags=flags,
+        request_headers=request_headers,
+    )
 
 
 def apply_forwarded_state(
     connection: Connection, state: Any, flags: dict[str, Any]
 ) -> None:
-    """Store a sub-agent's state and flags on a connection, keeping root-only flags."""
     attachment = connection._attachment()
     kept = {
         key: value

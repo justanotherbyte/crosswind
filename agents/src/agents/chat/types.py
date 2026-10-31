@@ -1,4 +1,4 @@
-"""Settings and results of ``AIChatAgent`` (upstream ``chat/lifecycle.ts``)."""
+"""Upstream ``chat/lifecycle.ts``."""
 
 import math
 from dataclasses import dataclass
@@ -29,7 +29,7 @@ class Debounce:
 
     seconds: float = 0.75
 
-    def __post_init__(self) -> None:  # noqa: D105
+    def __post_init__(self) -> None:
         if not math.isfinite(self.seconds) or self.seconds < 0:
             raise ValueError(f"Debounce seconds must be >= 0, not {self.seconds!r}")
 

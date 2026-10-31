@@ -1,7 +1,4 @@
-"""When schedules run: parsing ``when`` and intervals, and recurrences.
-
-Port of upstream ``schedules/schedule-timing.ts``.
-"""
+"""Port of upstream ``schedules/schedule-timing.ts``."""
 
 import math
 from datetime import datetime, timedelta
@@ -19,22 +16,9 @@ __all__ = (
 )
 
 MAX_INTERVAL = timedelta(days=30)
-"""The longest allowed gap between interval runs."""
 
 
 def parse_when(when: datetime | timedelta | float | str, now_ms: int) -> ScheduleTiming:
-    """Turn a ``schedule()`` ``when`` into timing.
-
-    A ``datetime`` runs once at that time, a ``timedelta`` or number of
-    seconds once after that delay, and a ``str`` on that cron expression.
-
-    Raises
-    ------
-    TypeError
-        If ``when`` is none of those, or a naive ``datetime``.
-    ValueError
-        If a delay isn't finite, or the cron expression is invalid.
-    """
     if isinstance(when, datetime):
         return ScheduleTiming(type="scheduled", time_ms=epoch_ms(when))
     if isinstance(when, str):
@@ -59,15 +43,6 @@ def parse_when(when: datetime | timedelta | float | str, now_ms: int) -> Schedul
 
 
 def parse_interval(interval: timedelta | float, now_ms: int) -> ScheduleTiming:
-    """Turn a ``schedule_every()`` interval into timing.
-
-    The first run is one interval from now.
-
-    Raises
-    ------
-    ValueError
-        If the interval isn't positive, or is longer than 30 days.
-    """
     seconds = to_seconds(interval)
     if not math.isfinite(seconds) or seconds <= 0:
         raise ValueError("A schedule interval must be positive")
@@ -81,16 +56,9 @@ def parse_interval(interval: timedelta | float, now_ms: int) -> ScheduleTiming:
 
 
 def next_cron_ms(cron: str, now_ms: int) -> int:
-    """Return the next time ``cron`` matches after ``now_ms`` (epoch ms).
-
-    Raises
-    ------
-    InvalidCronExpressionError
-        If the expression is invalid or never matches.
-    """
     return epoch_ms(parse_cron(cron).next_after(from_epoch_ms(now_ms)))
 
 
+# Recurring timings deduplicate by default.
 def is_recurring(timing: ScheduleTiming) -> bool:
-    """Return whether the timing repeats (and so deduplicates by default)."""
     return timing.type in ("cron", "interval")

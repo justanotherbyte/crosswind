@@ -1,10 +1,9 @@
-"""Telling platform failures apart from application failures.
+"""Port of upstream ``retries.ts`` (``isPlatformFailure`` and friends).
 
-Port of upstream ``retries.ts`` (``isPlatformFailure`` and friends). Work that
-fails because of the platform (a deploy replaced the isolate, storage reset,
-a dropped connection, a memory-limit reset) is preserved and re-run later;
-work that fails because of its own code is not. A JS error's message and its
-``retryable`` / ``overloaded`` flags are readable on the Python exception
+Work that fails because of the platform (a deploy replaced the isolate, storage
+reset, a dropped connection, a memory-limit reset) is preserved and re-run
+later; work that fails because of its own code is not. A JS error's message and
+its ``retryable`` / ``overloaded`` flags are readable on the Python exception
 (``.design/platform_verification.md`` §2.5).
 """
 
@@ -53,7 +52,6 @@ def _matches(error: BaseException, pattern: re.Pattern[str]) -> bool:
 
 
 def is_error_retryable(error: BaseException) -> bool:
-    """Return whether the platform marked ``error`` retryable (and not overloaded)."""
     return (
         getattr(error, "retryable", False) is True
         and getattr(error, "overloaded", False) is not True
@@ -62,36 +60,24 @@ def is_error_retryable(error: BaseException) -> bool:
 
 
 def is_code_update_reset(error: BaseException) -> bool:
-    """Return whether ``error`` means a deploy superseded this isolate."""
     return _matches(error, _SUPERSEDED_ISOLATE)
 
 
 def is_storage_reset(error: BaseException) -> bool:
-    """Return whether ``error`` is the Durable Object storage-reset signal."""
     return _matches(error, _STORAGE_RESET)
 
 
 def is_reset_error(error: BaseException) -> bool:
-    """Return whether ``error`` means this Durable Object is being reset."""
     return is_code_update_reset(error) or is_storage_reset(error)
 
 
+# Unlike a transient, re-running the same work re-exceeds the limit, so
+# callers bound retries tightly and then give up (upstream #1825).
 def is_memory_limit_reset(error: BaseException) -> bool:
-    """Return whether ``error`` is a Durable Object memory-limit reset.
-
-    Unlike a transient, re-running the same work re-exceeds the limit, so
-    callers bound retries tightly and then give up (upstream #1825).
-    """
     return _matches(error, _MEMORY_LIMIT_RESET)
 
 
 def is_platform_transient_error(error: BaseException) -> bool:
-    """Return whether ``error`` is a transient platform failure.
-
-    A superseded isolate, a dropped connection, a storage reset, or an error
-    the platform flags retryable. The same work succeeds once the platform
-    recovers.
-    """
     return any(
         _SUPERSEDED_ISOLATE.search(message := str(item))
         or _CONNECTION_LOST.search(message)
@@ -102,9 +88,4 @@ def is_platform_transient_error(error: BaseException) -> bool:
 
 
 def is_platform_failure(error: BaseException) -> bool:
-    """Return whether ``error`` is the platform's fault rather than the code's.
-
-    Failed work in this class is preserved and deferred, never completed as
-    an application failure.
-    """
     return is_platform_transient_error(error) or is_memory_limit_reset(error)

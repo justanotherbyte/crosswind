@@ -1,17 +1,12 @@
-"""``AIChatAgent``: an agent that runs chat turns (upstream ``ai-chat/src/index.ts``).
+"""Upstream ``ai-chat/src/index.ts``.
 
-The transcript is stored in Sessions and mirrored, as wire-form dicts, into
-memory (``self.messages`` decodes them on demand). A turn runs
-``on_chat_message`` and streams what it yields to every client as
-``cf_agent_use_chat_response`` frames, storing each chunk in a resumable
-stream so a client that reconnects mid-turn is sent the replay; the
-finished message is saved in the same transaction that settles the stream
-(``.design/chat_engine.md`` §5).
+Each streamed chunk is stored in a resumable stream, so a client that
+reconnects mid-turn is sent the replay. The finished message is saved in the
+same transaction that settles the stream (``.design/chat_engine.md`` §5).
 
-Turns run one at a time from a queue. Each turn's consumption of
-``on_chat_message`` runs in its own task, which a cancel (the client's stop,
-`AIChatAgent.abort_request`, or cancelling the code awaiting
-`AIChatAgent.save_messages`) cancels; the turn then ends as ``aborted``.
+Each turn's consumption of ``on_chat_message`` runs in its own task, which a
+cancel (the client's stop, `AIChatAgent.abort_request`, or cancelling the code
+awaiting `AIChatAgent.save_messages`) cancels. The turn then ends as ``aborted``.
 
 Not yet ported: client tools and approvals (12c); running turns as Tasks,
 recovery, and the stall watchdog (12d).
@@ -111,7 +106,6 @@ _FLUSH_AT_ONCE = frozenset(
     {"tool-output-available", "tool-output-error", "tool-output-denied"}
 )
 _VALID_ROLES = frozenset({"user", "assistant", "system"})
-_SAVE_FAILED = "Failed to save the response."
 
 
 @dataclass(slots=True)
@@ -129,8 +123,6 @@ class _Cutover:
 
 @dataclass(slots=True)
 class _Turn:
-    """One turn's consumption state."""
-
     request_id: str
     stream_id: str
     message: WireMessage
@@ -208,8 +200,6 @@ class AIChatAgent(Agent[S]):
         self._last_body: dict[str, Any] | None = None
         self.use(_ChatHost(self))
 
-    # The transcript
-
     @property
     def messages(self) -> Sequence[UIMessage]:
         """The conversation, oldest first (read-only).
@@ -227,8 +217,6 @@ class AIChatAgent(Agent[S]):
 
     def _replace_wire_messages(self, messages: list[WireMessage]) -> None:
         self._wire_messages = messages
-
-    # Hooks (override these)
 
     def on_chat_message(
         self, options: ChatMessageOptions
@@ -272,8 +260,6 @@ class AIChatAgent(Agent[S]):
         Calls still waiting on the client are left alone.
         """
         return part_from_wire(_default_repair(part_to_wire(part)))
-
-    # Writing the transcript
 
     async def persist_messages(
         self, messages: Sequence[UIMessage], *, exclude: Iterable[str | Connection] = ()
@@ -384,8 +370,6 @@ class AIChatAgent(Agent[S]):
             {"messages": list(self._wire_messages), "type": CHAT_MESSAGES}, exclude
         )
 
-    # Stopping turns
-
     def abort_request(self, request_id: str) -> None:
         """Stop a running turn, as a client's stop would (no-op if not running).
 
@@ -408,11 +392,9 @@ class AIChatAgent(Agent[S]):
         self._turn_queue.reset()
         self.abort_all_requests()
         self._submit.reset()
-        self._pre_stream.release_awaiting()
+        self._pre_stream.release_parked()
         self._pre_stream.reset()
         self._pending_responses.clear()
-
-    # Agent integration
 
     @override
     async def _after_connect_frames(self, connection: Connection) -> None:
@@ -460,8 +442,6 @@ class AIChatAgent(Agent[S]):
         self._pre_stream.release(connection.id)
         await super()._close_locally(connection, code, reason, was_clean)
 
-    # Frames
-
     async def _on_chat_request(
         self, connection: Connection, event: ChatRequest
     ) -> None:
@@ -477,6 +457,7 @@ class AIChatAgent(Agent[S]):
         if not isinstance(parsed, dict) or not isinstance(parsed.get("messages"), list):
             _log.warning("Ignoring a chat request without messages")
             return
+
         messages: list[WireMessage] = parsed.pop("messages")
         client_tools = _valid_client_tools(parsed.pop("clientTools", None))
         trigger = parsed.pop("trigger", None)
@@ -486,6 +467,7 @@ class AIChatAgent(Agent[S]):
         origin = origin_message_ids(messages)
         if origin:
             self._request_origin_ids[request_id] = origin
+
         decision = self._submit_decision(trigger != "regenerate-message")
         if decision.action == "drop":
             # The client rolls its optimistic send back to this transcript.
@@ -496,6 +478,7 @@ class AIChatAgent(Agent[S]):
             self._complete_skipped(connection, request_id)
             self._request_origin_ids.pop(request_id, None)
             return
+
         # A new turn supersedes a stored terminal error.
         await clear_terminal(self.ctx.storage)
         self._pre_stream.begin(request_id)
@@ -597,7 +580,7 @@ class AIChatAgent(Agent[S]):
     ) -> None:
         idle = self._pre_stream.settle(request_id)
         if release_parked and idle and not self._stream.has_active_stream():
-            self._pre_stream.release_awaiting()
+            self._pre_stream.release_parked()
 
     def _submit_decision(self, is_submit_message: bool) -> SubmitDecision:
         decision = self._submit.decide(
@@ -632,8 +615,6 @@ class AIChatAgent(Agent[S]):
         await self._save(
             [*messages[:start], merged, *messages[end:]], delete_stale_rows=True
         )
-
-    # Turns
 
     async def _run_exclusive_turn(
         self,
@@ -705,15 +686,15 @@ class AIChatAgent(Agent[S]):
         body: dict[str, Any] | None,
         exclude: Sequence[str | Connection],
     ) -> _ReplyResult:
-        """Run one turn: on_chat_message's reply, streamed and saved.
-
-        The reply runs in its own task. Cancelling the caller stops it,
-        waits for it to settle, and re-raises.
-        """
         options = ChatMessageOptions(
             request_id=request_id,
             client_tools=tuple(
-                _client_tool_schema(tool) for tool in client_tools or ()
+                ClientToolSchema(
+                    name=tool.get("name", ""),
+                    description=tool.get("description"),
+                    parameters=tool.get("parameters"),
+                )
+                for tool in client_tools or ()
             ),
             body=body,
             continuation=continuation,
@@ -722,6 +703,7 @@ class AIChatAgent(Agent[S]):
         task = asyncio.ensure_future(
             self.keep_alive_while(partial(self._reply, options, tuple(exclude)))
         )
+        # A cancelled caller aborts the reply but still waits for it to settle.
         cancelled = False
         try:
             while not task.done():
@@ -757,6 +739,7 @@ class AIChatAgent(Agent[S]):
             self._emit("message:error", {"error": str(error)})
             await self._report_error(None, error)
             return _ReplyResult("error", str(error))
+
         message = self._new_assistant_message(continuation)
         turn = _Turn(
             request_id=request_id,
@@ -766,6 +749,7 @@ class AIChatAgent(Agent[S]):
         )
         self._streaming_message = message
         self._held_terminal_frames[request_id] = []
+
         persisted = False
         try:
             try:
@@ -807,16 +791,17 @@ class AIChatAgent(Agent[S]):
             self._pending_cutover = None
             self._stream.finalize_pending()
             self._release_terminal_frames(
-                request_id, None if persisted else _SAVE_FAILED
+                request_id, None if persisted else "Failed to save the response."
             )
 
+    # The turn's only cancellable stretch.
     async def _consume(self, turn: _Turn, options: ChatMessageOptions) -> _ReplyResult:
-        """Stream on_chat_message's output: the turn's one cancellable stretch."""
         request_id = turn.request_id
         current = asyncio.current_task()
         assert current is not None
         if request_id in self._abort_requested:
             return self._end_aborted(turn)
+
         self._consuming[request_id] = current
         source: Any = None
         try:
@@ -904,12 +889,8 @@ class AIChatAgent(Agent[S]):
         _check_order(turn, data, type(item).__name__)
         return self._apply_and_send(turn, data)
 
+    # Port of upstream ``_streamSSEReply``'s loop body.
     def _apply_and_send(self, turn: _Turn, data: dict[str, Any]) -> _ReplyResult | None:
-        """Apply one wire chunk to the message, then store and broadcast it.
-
-        Port of upstream ``_streamSSEReply``'s loop body. Returns the turn's
-        result when the chunk ends it (an ``error`` chunk).
-        """
         message = turn.message
         parts: list[dict[str, Any]] = message["parts"]
         kind = data.get("type")
@@ -1013,8 +994,6 @@ class AIChatAgent(Agent[S]):
             frame["continuation"] = True
         self._broadcast_chat(frame)
 
-    # Streams
-
     @property
     def _stream(self) -> ResumableStream:
         if self._resumable is None:
@@ -1058,10 +1037,10 @@ class AIChatAgent(Agent[S]):
         self._pending_resume.clear()
 
     async def _persist_orphaned_stream(self, stream_id: str) -> None:
-        """Save the partial message of a stream a dead isolate left behind."""
         bodies = self._stream.stream_chunks(stream_id)
         if not bodies:
             return
+
         fallback_id = _assistant_id()
         accumulator = StreamAccumulator(message_id=fallback_id)
         for body in bodies:
@@ -1072,24 +1051,23 @@ class AIChatAgent(Agent[S]):
             accumulator.apply_chunk(chunk)
         if not accumulator.parts:
             return
+
         message = accumulator.to_message()
         if message["id"] == fallback_id:
             # The id the stream was producing; for streams that didn't
             # record one, the last assistant message.
             stored_id = self._stream.get_stream_message_id(stream_id)
-            last = self._last_assistant()
             if stored_id is not None:
                 message["id"] = stored_id
-            elif last is not None:
+            elif (last := self._last_assistant()) is not None:
                 message["id"] = last["id"]
+
         existing = next(
             (m for m in self._wire_messages if m["id"] == message["id"]), None
         )
         if existing is not None:
             message = reconcile_orphan_partial(existing, message)
         await self._save(_with_message(self._wire_messages, message))
-
-    # Saving
 
     @property
     def _persist_overridden(self) -> bool:
@@ -1102,7 +1080,6 @@ class AIChatAgent(Agent[S]):
         exclude: Iterable[str | Connection] = (),
         delete_stale_rows: bool = False,
     ) -> None:
-        """Persist wire messages: through an override of persist_messages if any."""
         if not self._persist_overridden:
             await self._persist_wire(
                 messages, exclude=exclude, delete_stale_rows=delete_stale_rows
@@ -1138,6 +1115,7 @@ class AIChatAgent(Agent[S]):
             ):
                 continue
             to_write.append(resolved)
+
         cutover = self._pending_cutover
         if cutover is not None and any(m["id"] == cutover.message_id for m in merged):
             self._pending_cutover = None
@@ -1160,6 +1138,7 @@ class AIChatAgent(Agent[S]):
         else:
             for message in to_write:
                 await self._session.upsert_message(cast(SessionMessage, message))
+
         if delete_stale_rows:
             await self._delete_stale_rows(merged, prior)
         limit = type(self).options.max_persisted_messages
@@ -1169,6 +1148,7 @@ class AIChatAgent(Agent[S]):
             excess = len(stats) - limit
             if excess > 0:
                 await self._session.delete_messages([row.id for row in stats[:excess]])
+
         self._broadcast_chat({"messages": merged, "type": CHAT_MESSAGES}, exclude)
 
     async def _delete_stale_rows(
@@ -1221,8 +1201,6 @@ class AIChatAgent(Agent[S]):
             return _default_repair(part)
         typed = part_from_wire(part)
         return part_to_wire(self.repair_interrupted_tool_part(cast(AnyToolPart, typed)))
-
-    # Broadcasting
 
     def _broadcast_chat(
         self, frame: dict[str, Any], exclude: Iterable[str | Connection] = ()
@@ -1278,8 +1256,6 @@ class AIChatAgent(Agent[S]):
             return list(self._wire_messages)
         return _with_message(self._wire_messages, streaming)
 
-    # Request context (survives hibernation for programmatic turns)
-
     def _set_request_context(
         self, client_tools: list[dict[str, Any]] | None, body: dict[str, Any] | None
     ) -> None:
@@ -1288,6 +1264,8 @@ class AIChatAgent(Agent[S]):
         self._persist_request_context()
 
     def _persist_request_context(self) -> None:
+        # Stored so a programmatic turn after a wake reuses the last
+        # request's client tools and body.
         for key, value in (
             ("lastBody", self._last_body),
             ("lastClientTools", self._last_client_tools),
@@ -1312,8 +1290,6 @@ class AIChatAgent(Agent[S]):
                 self._last_body = value
             elif row["key"] == "lastClientTools":
                 self._last_client_tools = _valid_client_tools(value)
-
-    # Helpers
 
     def _last_assistant(self) -> WireMessage | None:
         return next(
@@ -1356,15 +1332,12 @@ class AIChatAgent(Agent[S]):
 
 
 class _ChatHost(LifecycleCapability):
-    """Chat's startup and its ``get-messages`` route."""
-
     def __init__(self, agent: AIChatAgent[Any]) -> None:
         super().__init__("chat")
         self._agent = agent
 
     @override
     async def on_start(self) -> None:
-        """Restore the request context and active stream, then load the transcript."""
         agent = self._agent
         self.lifecycle.sql(
             "CREATE TABLE IF NOT EXISTS cf_ai_chat_request_context"
@@ -1379,7 +1352,6 @@ class _ChatHost(LifecycleCapability):
 
     @override
     async def on_request(self, request: "Request") -> Response | None:
-        """Serve ``…/get-messages``: the stored transcript, streamed as JSON."""
         path = request.url.split("?", 1)[0].split("#", 1)[0]
         if path.rsplit("/", 1)[-1] != "get-messages":
             return None
@@ -1390,8 +1362,6 @@ class _ChatHost(LifecycleCapability):
 
 
 class _MessagesView(Sequence[UIMessage]):
-    """``self.messages``: typed messages decoded on access, cached per dict."""
-
     __slots__ = ("_cache", "_wire")
 
     def __init__(
@@ -1426,9 +1396,6 @@ class _MessagesView(Sequence[UIMessage]):
         return typed
 
 
-# Module helpers
-
-
 def _new_id() -> str:
     return secrets.token_urlsafe(16)
 
@@ -1445,14 +1412,6 @@ def _valid_client_tools(raw: Any) -> list[dict[str, Any]] | None:
     return tools or None
 
 
-def _client_tool_schema(tool: Any) -> ClientToolSchema:
-    return ClientToolSchema(
-        name=tool.get("name", ""),
-        description=tool.get("description"),
-        parameters=tool.get("parameters"),
-    )
-
-
 def _default_repair(part: dict[str, Any]) -> dict[str, Any]:
     error_text = (
         "The tool call was approved but did not run before the next turn started."
@@ -1465,7 +1424,6 @@ def _default_repair(part: dict[str, Any]) -> dict[str, Any]:
 def _with_message(
     messages: Sequence[WireMessage], message: WireMessage
 ) -> list[WireMessage]:
-    """Return ``messages`` with ``message`` replacing its id's entry, or appended."""
     updated = list(messages)
     for index, existing in enumerate(updated):
         if existing["id"] == message["id"]:
@@ -1528,12 +1486,9 @@ _NEEDS_START = {
 }
 
 
+# The AI SDK client rejects an unopened delta or end and drops the whole reply,
+# so the turn fails here instead, saying what was wrong.
 def _check_order(turn: _Turn, data: dict[str, Any], chunk_name: str) -> None:
-    """Raise if a delta or end chunk has no open start in this stream.
-
-    The AI SDK client rejects such a chunk and drops the whole reply, so the
-    turn fails instead, saying what was wrong.
-    """
     kind = data["type"]
     if kind in _OPENED_BY:
         part, id_field = _OPENED_BY[kind]

@@ -1,10 +1,9 @@
-"""Chat's write-side hygiene on top of Sessions' (upstream ``AIChatAgent``).
+"""Upstream ``AIChatAgent``'s write-side truncation.
 
-Provider-executed tool parts (code execution, text editors, …) can carry
-large inputs and outputs that only the provider needs; their strings over
-500 characters are cut with a marker before saving. Web search and fetch
-results are kept whole, as are strings under keys starting with
-``encrypted`` (opaque provider state that must replay byte for byte).
+Provider-executed tool parts (code execution, text editors) can carry large
+inputs and outputs that only the provider needs. Web search and fetch results
+are kept whole. Strings under ``encrypted*`` keys are opaque provider state
+that must replay byte for byte.
 """
 
 from typing import Any
@@ -19,7 +18,6 @@ type Part = dict[str, Any]
 
 
 def truncate_provider_tool_payloads(part: Part) -> Part:
-    """Return ``part`` with a provider-executed tool's long strings truncated."""
     if not part.get("providerExecuted") or _tool_name(part) in _PRESERVED_TOOLS:
         return part
     result = dict(part)

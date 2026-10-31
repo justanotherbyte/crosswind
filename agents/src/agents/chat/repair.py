@@ -1,12 +1,7 @@
-"""Settling tool calls an interrupted stream left open.
-
-Port of upstream ``chat/repair-transcript.ts``.
+"""Upstream ``chat/repair-transcript.ts``.
 
 A stream cut off mid-tool-call leaves a ``tool-*`` part with no result, and
-the next model call would fail on it. Before a recovered turn calls the model
-again, each unsettled call is handed to ``repair_part`` (which settles it,
-e.g. as an error), and malformed tool input is normalized. Works on
-wire-form dictionaries; inputs aren't mutated.
+the next model call would fail on it. Inputs aren't mutated.
 """
 
 from collections.abc import Callable, Sequence
@@ -14,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .builder import normalize_tool_input
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "RepairResult",
@@ -27,8 +23,6 @@ type Part = dict[str, Any]
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class RepairResult:
-    """The repaired messages, and what changed."""
-
     messages: list[Message]
     removed_tool_calls: int
     normalized_inputs: int
@@ -36,10 +30,9 @@ class RepairResult:
 
 
 def tool_part_has_settled_result(part: Part) -> bool:
-    """Return whether a tool part has a result (an output, or a settled state)."""
     if "output" in part or "result" in part:
         return True
-    return part.get("state") in ("output-available", "output-error", "output-denied")
+    return part.get("state") in SETTLED_TOOL_STATES
 
 
 def repair_interrupted_tool_parts(
@@ -51,22 +44,6 @@ def repair_interrupted_tool_parts(
     should_repair: Callable[[Part], bool] | None = None,
     repair_approval_responded: bool = False,
 ) -> RepairResult:
-    """Settle unsettled tool calls with ``repair_part``; normalize tool input.
-
-    Parameters
-    ----------
-    repair_part
-        Turns an unsettled tool part (input already normalized) into a
-        settled one.
-    is_settled
-        Whether a tool part has its result.
-    should_repair
-        Leave a part as is when this returns ``False``.
-    repair_approval_responded
-        Also settle approved calls left ``approval-responded`` (except in the
-        last message, whose turn may still run them); denied ones become
-        ``output-denied`` either way when this is set.
-    """
     removed = 0
     normalized_count = 0
     tool_call_ids: list[str] = []
@@ -90,6 +67,7 @@ def repair_interrupted_tool_parts(
             assert isinstance(tool_call_id, str)
             if not is_settled(part):
                 if part.get("state") == "approval-responded":
+                    # The last message's turn may still run an approved call.
                     if not repair_approval_responded or is_last:
                         parts.append(part)
                         continue
