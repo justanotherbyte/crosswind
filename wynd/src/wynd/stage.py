@@ -9,6 +9,7 @@ from .console import warn
 from .errors import WyndError
 from .project import Project
 from .shake import ShakePlan, shake
+from .utils import read_text
 
 __all__ = ("StagedFile", "stage_run", "stage_upload")
 
@@ -26,11 +27,8 @@ class StagedFile:
     def warn_if_edited(self, source: Path) -> None:
         """Name the keys Wrangler changed in the file, such as a binding that
         `d1 create` wrote, and `source` as the file to copy them into."""
-        try:
-            current = self.path.read_text()
-        except FileNotFoundError:
-            return
-        if current == self.text:
+        current = read_text(self.path)
+        if current is None or current == self.text:
             return
 
         before = json.loads(self.text)

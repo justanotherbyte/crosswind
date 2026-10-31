@@ -4,7 +4,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from .console import error
+from .errors import WyndError
 
 __all__ = ("VERSION", "run")
 
@@ -20,6 +20,8 @@ def run(
 ) -> int:
     """Run the pinned Wrangler with `args` and return its exit code.
 
+    Raises WyndError when npx isn't on PATH.
+
     `environ` replaces the environment Wrangler inherits. While Wrangler runs,
     `restage` is called within a second of each change to `watch`, because
     wrangler dev watches only the staged file, not the one the user edits.
@@ -27,8 +29,7 @@ def run(
     # which() also finds npx.cmd on Windows, which Popen can't find by name.
     npx = shutil.which("npx")
     if npx is None:
-        error("npx not found on PATH. Install Node.js, which provides npx.")
-        return 1
+        raise WyndError("npx not found on PATH. Install Node.js, which provides npx.")
 
     process = subprocess.Popen(
         [npx, "--yes", f"wrangler@{VERSION}", *args], env=environ
