@@ -15,13 +15,13 @@ class EventHub:
     def __init__(self) -> None:
         self._watchers: dict[str, set[asyncio.Queue[HarnessEvent]]] = {}
 
-    def subscribe(self, session: str) -> "asyncio.Queue[HarnessEvent]":
+    def subscribe(self, session: str) -> asyncio.Queue[HarnessEvent]:
         """Return a queue that receives the session's events from now on."""
         queue: asyncio.Queue[HarnessEvent] = asyncio.Queue()
         self._watchers.setdefault(session, set()).add(queue)
         return queue
 
-    def unsubscribe(self, session: str, queue: "asyncio.Queue[HarnessEvent]") -> None:
+    def unsubscribe(self, session: str, queue: asyncio.Queue[HarnessEvent]) -> None:
         """Stop sending the session's events to ``queue``."""
         watchers = self._watchers.get(session)
         if watchers is None:

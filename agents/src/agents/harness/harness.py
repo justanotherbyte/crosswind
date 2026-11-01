@@ -294,10 +294,10 @@ class Harness(LifecycleCapability):
 
         return self._store.session_ids()
 
-    def _subscribe(self, session: str) -> "asyncio.Queue[HarnessEvent]":
+    def _subscribe(self, session: str) -> asyncio.Queue[HarnessEvent]:
         return self._events.subscribe(session)
 
-    def _unsubscribe(self, session: str, queue: "asyncio.Queue[HarnessEvent]") -> None:
+    def _unsubscribe(self, session: str, queue: asyncio.Queue[HarnessEvent]) -> None:
         self._events.unsubscribe(session, queue)
 
     async def _wake(self, session: str) -> None:

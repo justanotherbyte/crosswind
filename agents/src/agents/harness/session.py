@@ -1,5 +1,7 @@
 """Handles on a harness's sessions, matching upstream's ``AgentHarness`` names."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING
 
@@ -32,12 +34,11 @@ class HarnessSession:
 
     __slots__ = ("_harness", "id")
 
-    def __init__(self, harness: "Harness", id: str) -> None:
+    def __init__(self, harness: Harness, id: str) -> None:
         self._harness = harness
         self.id = id
 
-    def __repr__(self) -> str:
-        """Return ``<HarnessSession id='...'>``."""
+    def __repr__(self) -> str:  # noqa: D105
         return f"<HarnessSession id={self.id!r}>"
 
     async def submit(
@@ -132,7 +133,7 @@ class HarnessSessions:
 
     __slots__ = ("_harness",)
 
-    def __init__(self, harness: "Harness") -> None:
+    def __init__(self, harness: Harness) -> None:
         self._harness = harness
 
     async def create(self) -> HarnessSession:

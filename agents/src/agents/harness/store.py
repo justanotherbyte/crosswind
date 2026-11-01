@@ -7,7 +7,7 @@ one object. History and checkpoints are opaque bytes the subclass owns.
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 from ..core.sql import Sql
 from ..core.timing import now_ms
@@ -63,7 +63,7 @@ class OperationRow:
     reason: str | None
 
     @classmethod
-    def from_sql(cls, row: dict[str, Any]) -> "OperationRow":
+    def from_sql(cls, row: dict[str, Any]) -> Self:
         """Parse a row of the operations table."""
         result = json.loads(row["result"]) if row["result"] is not None else {}
 

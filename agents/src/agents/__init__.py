@@ -7,6 +7,7 @@ from .dynamic_agents import *
 from .fibers import *
 from .harness import *
 from .lifecycle import *
+from .models import *
 from .observability import *
 from .queue import *
 from .schedules import *
@@ -38,12 +39,14 @@ __all__ = (
     "Approval",
     "CallableMetadata",
     "CancelledRun",
+    "ChatMessage",
     "ChatMessageOptions",
     "ChatResponseResult",
     "ChatStreamError",
     "ClearEvent",
     "ClientToolSchema",
     "CompletedRun",
+    "Completion",
     "Connection",
     "ConnectionContext",
     "ConnectionStateTooLargeError",
@@ -70,6 +73,8 @@ __all__ = (
     "FiberStatus",
     "Fibers",
     "FilePart",
+    "FunctionCall",
+    "FunctionSchema",
     "Harness",
     "HarnessEvent",
     "HarnessInput",
@@ -170,7 +175,9 @@ __all__ = (
     "ToolApproval",
     "ToolApprovalRequestedPart",
     "ToolApprovalRespondedPart",
+    "ToolCall",
     "ToolCallEvent",
+    "ToolCallPayload",
     "ToolInputAvailablePart",
     "ToolInputStreamingPart",
     "ToolOutput",
@@ -180,6 +187,7 @@ __all__ = (
     "ToolPart",
     "ToolRequest",
     "ToolResultEvent",
+    "ToolSchema",
     "ToolSpec",
     "ToolState",
     "Turn",
@@ -188,10 +196,12 @@ __all__ = (
     "UIMessagePart",
     "UnknownPart",
     "UpdateEvent",
+    "Usage",
     "WaitingRun",
     "WebSocketHandlers",
     "WebSockets",
     "WhenBusy",
+    "WorkersAIModel",
     "build_agent_path",
     "build_agent_url",
     "callable",
