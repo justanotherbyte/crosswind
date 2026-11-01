@@ -95,3 +95,13 @@ def test_json_mode_response_becomes_text() -> None:
 def test_complete_needs_a_message() -> None:
     with pytest.raises(ValueError, match="at least one message"):
         asyncio.run(WorkersAIModel("m", binding=FakeAI()).complete([]))
+
+
+def test_clean_text_rewrites_the_answer() -> None:
+    model = WorkersAIModel(
+        "m", binding=FakeAI({"response": "\n\nSunny."}), clean_text=str.strip
+    )
+
+    completion = asyncio.run(model.complete([{"role": "user", "content": "hey"}]))
+
+    assert completion.text == "Sunny."

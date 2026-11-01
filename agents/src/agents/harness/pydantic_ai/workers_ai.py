@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Iterator,
+    Sequence,
+)
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -51,7 +57,9 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     """A Workers AI chat model that a Pydantic AI agent can run.
 
     Text only: a prompt with images or files raises `TypeError`. Streamed
-    requests return the whole answer as one chunk.
+    requests return the whole answer as one chunk, so ``clean_text`` sees
+    the whole text, and the streamed text, the run's output and the stored
+    history all hold what it returns.
 
     Parameters
     ----------
@@ -65,10 +73,15 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
         reach the model.
     profile
         The Pydantic AI model profile.
+    clean_text
+        Rewrites the text of each answer before Pydantic AI sees it.
+        ``None`` keeps the text as the model sent it.
 
     Examples
     --------
-    >>> model = WorkersAIModel("@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI)
+    >>> model = WorkersAIModel(
+    ...     "@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI, clean_text=str.strip
+    ... )
     >>> agent = pydantic_ai.Agent(model, instructions="Be brief.")
     """
 
@@ -79,8 +92,15 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
         binding: Any,
         settings: ModelSettings | None = None,
         profile: ModelProfileSpec | None = None,
+        clean_text: Callable[[str], str] | None = None,
     ) -> None:
-        super().__init__(name, binding=binding, settings=settings, profile=profile)
+        super().__init__(
+            name,
+            binding=binding,
+            clean_text=clean_text,
+            settings=settings,
+            profile=profile,
+        )
 
     @property
     def model_name(self) -> str:

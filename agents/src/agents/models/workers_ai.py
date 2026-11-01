@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from typing import Any, Literal, NotRequired, Self, TypedDict
 
 from .. import _ffi
@@ -154,6 +154,10 @@ class WorkersAIModel:
         The model id, like ``"@cf/meta/llama-4-scout-17b-16e-instruct"``.
     binding
         The ``ai`` binding (``env.AI``).
+    clean_text
+        Rewrites the text of each answer, like ``str.strip`` for a model
+        that starts its answers with blank lines. ``None`` keeps the text
+        as the model sent it.
 
     Examples
     --------
@@ -161,12 +165,21 @@ class WorkersAIModel:
     >>> completion = await model.complete([{"role": "user", "content": "Hi"}])
     """
 
-    def __init__(self, name: str, *, binding: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        binding: Any,
+        clean_text: Callable[[str], str] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self.name = name
         """The model id."""
         self.binding = binding
         """The ``ai`` binding."""
+        self.clean_text = clean_text
+        """Rewrites the text of each answer; ``None`` keeps it as sent."""
 
     def __repr__(self) -> str:  # noqa: D105
         return f"<{type(self).__name__} name={self.name!r}>"
@@ -202,4 +215,8 @@ class WorkersAIModel:
             payload["tools"] = list(tools)
 
         output = await self.binding.run(self.name, _ffi.py_to_js(payload))
-        return Completion.from_output(_ffi.js_to_py(output))
+        completion = Completion.from_output(_ffi.js_to_py(output))
+        if self.clean_text is None:
+            return completion
+
+        return replace(completion, text=self.clean_text(completion.text))
