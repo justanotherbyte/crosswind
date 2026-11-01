@@ -6,9 +6,12 @@ from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from pydantic_ai import (
+    BinaryContent,
+    CachePoint,
+    ImageUrl,
     InstructionPart,
     ModelMessage,
     ModelRequest,
@@ -17,16 +20,25 @@ from pydantic_ai import (
     RequestUsage,
     RetryFeedbackPart,
     SystemPromptPart,
+    TextContent,
     TextPart,
     ToolCallPart,
     ToolDefinition,
     ToolReturnPart,
+    UserContent,
     UserPromptPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
+from workers import fetch
 
 from ...models import workers_ai
-from ...models.workers_ai import ChatMessage, Completion, ToolSchema
+from ...models.workers_ai import (
+    ChatMessage,
+    Completion,
+    ContentPart,
+    ImageContentPart,
+    ToolSchema,
+)
 
 if TYPE_CHECKING:
     from pydantic_ai import ModelResponsePart, ModelResponseStreamEvent, RunContext
@@ -50,8 +62,12 @@ _OPTIONS = (
 class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     """A Workers AI chat model that a Pydantic AI agent can run.
 
-    Text only: a prompt with images or files raises `TypeError`. Streamed
-    requests return the whole answer as one chunk.
+    Prompts may hold images: `BinaryImage` or image `BinaryContent`, and
+    `ImageUrl`, which is downloaded because Workers AI takes only ``data:``
+    URLs. Other files in a prompt raise `TypeError`. A tool's images reach
+    the model in a user message after the tool results, and its other
+    files as a note naming them. Streamed requests return the whole answer
+    as one chunk.
 
     Parameters
     ----------
@@ -71,6 +87,10 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     >>> model = WorkersAIModel("@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI)
     >>> agent = pydantic_ai.Agent(model, instructions="Be brief.")
     """
+
+    _unsupported_file_inputs: ClassVar[
+        frozenset[Literal["image", "document", "audio", "video"]]
+    ] = frozenset({"document", "audio", "video"})
 
     def __init__(
         self,
@@ -129,7 +149,7 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     ) -> ModelResponse:
         instructions = InstructionPart.join(parameters.instruction_parts or [])
         completion = await self.complete(
-            _to_chat_messages(messages, instructions),
+            await _to_chat_messages(messages, instructions),
             tools=[_to_tool_schema(tool) for tool in parameters.tool_defs.values()],
             options=_to_options(settings),
         )
@@ -180,10 +200,10 @@ class _ReplayedResponse(StreamedResponse):
         return self.response.timestamp
 
 
-def _to_chat_messages(
+async def _to_chat_messages(
     messages: Sequence[ModelMessage], instructions: str | None
 ) -> list[ChatMessage]:
-    chat = [item for message in messages for item in _chat_messages(message)]
+    chat = [item for message in messages for item in await _chat_messages(message)]
     if instructions:
         opening = next(
             (i for i, item in enumerate(chat) if item["role"] != "system"), len(chat)
@@ -192,38 +212,83 @@ def _to_chat_messages(
     return chat
 
 
-def _chat_messages(message: ModelMessage) -> Iterator[ChatMessage]:
+async def _chat_messages(message: ModelMessage) -> list[ChatMessage]:
     if isinstance(message, ModelRequest):
-        yield from _request_messages(message)
-    else:
-        yield _response_message(message)
+        return await _request_messages(message)
+    return [_response_message(message)]
 
 
-def _request_messages(request: ModelRequest) -> Iterator[ChatMessage]:
+async def _request_messages(request: ModelRequest) -> list[ChatMessage]:
+    chat: list[ChatMessage] = []
+    files: list[UserContent] = []
     for part in request.parts:
         match part:
             case SystemPromptPart(content=content):
-                yield {"role": "system", "content": content}
+                chat.append({"role": "system", "content": content})
             case UserPromptPart(content=content):
-                yield {"role": "user", "content": _prompt_text(content)}
+                chat.append({"role": "user", "content": await _user_content(content)})
             case ToolReturnPart():
-                yield {
-                    "role": "tool",
-                    "name": part.tool_name,
-                    "tool_call_id": part.tool_call_id,
-                    "content": part.model_response_str(),
-                }
+                text, returned = part.model_response_str_and_user_content()
+                files.extend(returned)
+                chat.append(
+                    {
+                        "role": "tool",
+                        "name": part.tool_name,
+                        "tool_call_id": part.tool_call_id,
+                        "content": text,
+                    }
+                )
             case RetryFeedbackPart():
-                yield {"role": "user", "content": part.model_response()}
+                chat.append({"role": "user", "content": part.model_response()})
+
+    if files:
+        chat.append({"role": "user", "content": await _user_content(files)})
+    return chat
 
 
-def _prompt_text(content: str | Sequence[object]) -> str:
+async def _user_content(
+    content: str | Sequence[UserContent],
+) -> str | list[ContentPart]:
     if isinstance(content, str):
         return content
-    if not all(isinstance(item, str) for item in content):
-        raise TypeError("WorkersAIModel only sends text prompts")
 
-    return "\n".join(str(item) for item in content)
+    parts = [part for item in content if (part := await _content_part(item))]
+    if any(part["type"] == "image_url" for part in parts):
+        return parts
+    return "\n".join(part["text"] for part in parts if part["type"] == "text")
+
+
+async def _content_part(item: UserContent) -> ContentPart | None:
+    match item:
+        case str():
+            return {"type": "text", "text": item}
+        case TextContent(content=text):
+            return {"type": "text", "text": text}
+        case CachePoint():
+            return None
+        case BinaryContent() if item.is_image:
+            return _image_part(item.data_uri)
+        case ImageUrl():
+            return _image_part(await _download(item))
+        case _:
+            raise TypeError(
+                "WorkersAIModel sends text and images only, not"
+                f" {type(item).__name__} ({item.media_type})"
+            )
+
+
+async def _download(image: ImageUrl) -> str:
+    response = await fetch(image.url)
+    if not response.ok:
+        raise ValueError(f"Downloading {image.url} failed: HTTP {response.status}")
+
+    header = (response.headers.get("content-type") or "").split(";")[0].strip()
+    media_type = header if header.startswith("image/") else image.media_type
+    return BinaryContent(await response.bytes(), media_type=media_type).data_uri
+
+
+def _image_part(url: str) -> ImageContentPart:
+    return {"type": "image_url", "image_url": {"url": url}}
 
 
 def _response_message(response: ModelResponse) -> ChatMessage:

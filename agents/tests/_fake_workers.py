@@ -37,6 +37,17 @@ class Response:
         self.headers = Headers(headers)
         self.web_socket = web_socket
 
+    @property
+    def ok(self) -> bool:
+        return 200 <= self.status < 300
+
+    async def bytes(self) -> bytes:
+        return self.body
+
+
+async def fetch(url: str, **_options: Any) -> Response:
+    raise NotImplementedError(f"tests must patch fetch to reach {url}")
+
 
 class DurableObject:
     def __init__(self, ctx: Any, env: Any) -> None:

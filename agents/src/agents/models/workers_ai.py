@@ -3,6 +3,10 @@
 Workers AI chat models answer in one of two shapes: ``response`` with
 ``tool_calls`` (flat or nested under ``function``), or an OpenAI-style
 ``choices[0].message``. `Completion` parses both.
+
+A user message's content is a string, or a list of text and image parts
+when it holds an image. Images are base64 ``data:`` URLs: Workers AI rejects
+http(s) image URLs, and text-only models reject a content list.
 """
 
 from __future__ import annotations
@@ -19,8 +23,12 @@ from ..core.types import JSONValue
 __all__ = (
     "ChatMessage",
     "Completion",
+    "ContentPart",
     "FunctionCall",
     "FunctionSchema",
+    "ImageContentPart",
+    "ImageURL",
+    "TextContentPart",
     "ToolCall",
     "ToolCallPayload",
     "ToolSchema",
@@ -44,11 +52,38 @@ class ToolCallPayload(TypedDict):
     function: FunctionCall
 
 
+class TextContentPart(TypedDict):
+    """Text inside a user message's content list."""
+
+    type: Literal["text"]
+    text: str
+
+
+class ImageURL(TypedDict):
+    """An image as a ``data:image/...;base64,`` URL."""
+
+    url: str
+
+
+class ImageContentPart(TypedDict):
+    """An image inside a user message's content list."""
+
+    type: Literal["image_url"]
+    image_url: ImageURL
+
+
+type ContentPart = TextContentPart | ImageContentPart
+"""One part of a user message's content list."""
+
+
 class ChatMessage(TypedDict):
-    """One message of the conversation sent to the model."""
+    """One message of the conversation sent to the model.
+
+    ``content`` is a list only on a user message that holds an image.
+    """
 
     role: Literal["system", "user", "assistant", "tool"]
-    content: str
+    content: str | list[ContentPart]
     name: NotRequired[str]
     tool_call_id: NotRequired[str]
     tool_calls: NotRequired[list[ToolCallPayload]]
