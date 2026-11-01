@@ -22,6 +22,7 @@ version = "0.2.1"
 [project.optional-dependencies]
 # Hosting MCP servers (agents.mcp.server); needs Python 3.14 Workers (.design/mcp.md §2.1).
 mcp-server = ["mcp>=2.3,<3"]
+# Runs on Python 3.13 Workers only with the Pyodide 0.29.3 index (harness/pydantic_ai docstring).
 pydantic-ai = [
     "pydantic-ai-slim>=2.64,<3",
 ]
