@@ -24,6 +24,7 @@ from pydantic_ai import (
     RetryFeedbackPart,
     SystemPromptPart,
     TextPart,
+    ThinkingPart,
     ToolCallPart,
     ToolDefinition,
     ToolReturnPart,
@@ -287,6 +288,11 @@ def _to_options(settings: ModelSettings | None) -> dict[str, object]:
 
 
 def _to_model_response(completion: Completion, name: str) -> ModelResponse:
+    thinking = (
+        [ThinkingPart(completion.reasoning, provider_name=_PROVIDER)]
+        if completion.reasoning
+        else []
+    )
     text = [TextPart(completion.text)] if completion.text else []
     calls = [
         ToolCallPart(call.name, call.arguments, tool_call_id=call.id)
@@ -294,7 +300,7 @@ def _to_model_response(completion: Completion, name: str) -> ModelResponse:
     ]
 
     return ModelResponse(
-        parts=[*text, *calls],
+        parts=[*thinking, *text, *calls],
         usage=RequestUsage(
             input_tokens=completion.usage.input_tokens,
             output_tokens=completion.usage.output_tokens,

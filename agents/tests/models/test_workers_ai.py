@@ -88,6 +88,15 @@ def test_parses_openai_style_choices() -> None:
     )
 
 
+def test_parses_reasoning_from_either_field() -> None:
+    def message(**fields: str) -> dict[str, Any]:
+        return {"choices": [{"message": {"content": "ok", **fields}}]}
+
+    assert Completion.from_output(message(reasoning_content="r1")).reasoning == "r1"
+    assert Completion.from_output(message(reasoning="r2")).reasoning == "r2"
+    assert Completion.from_output(message()).reasoning == ""
+
+
 def test_json_mode_response_becomes_text() -> None:
     assert Completion.from_output({"response": {"a": 1}}).text == '{"a": 1}'
 

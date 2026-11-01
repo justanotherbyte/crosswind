@@ -113,9 +113,10 @@ class Usage:
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class Completion:
-    """The model's answer: text, tool calls, or both."""
+    """The model's answer: text, tool calls, or both, and any reasoning."""
 
     text: str
+    reasoning: str = ""
     tool_calls: Sequence[ToolCall] = ()
     usage: Usage = Usage()
 
@@ -131,6 +132,9 @@ class Completion:
 
         return cls(
             text=_as_text(text),
+            reasoning=message.get("reasoning_content")
+            or message.get("reasoning")
+            or "",
             tool_calls=tuple(
                 ToolCall.from_output(call) for call in message.get("tool_calls") or ()
             ),

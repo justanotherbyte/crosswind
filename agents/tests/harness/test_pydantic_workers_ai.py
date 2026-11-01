@@ -59,6 +59,19 @@ def test_a_tool_round_trip_through_the_harness() -> None:
     ]
 
 
+def test_reasoning_becomes_a_thinking_part() -> None:
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=FakeAI(QWEN)))
+
+    reply = asyncio.run(agent.run("weather?")).all_messages()[-1]
+
+    assert isinstance(reply, pydantic_ai.ModelResponse)
+    thinking, text = reply.parts
+    assert thinking == pydantic_ai.ThinkingPart(
+        "\nThe user wants the weather.\n", provider_name="cloudflare"
+    )
+    assert text == pydantic_ai.TextPart("\n\nSunny.")
+
+
 def test_non_text_prompts_are_rejected() -> None:
     agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=FakeAI()))
     image = pydantic_ai.ImageUrl("https://example.com/a.png")
