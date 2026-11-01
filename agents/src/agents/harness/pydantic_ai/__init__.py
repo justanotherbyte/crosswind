@@ -15,12 +15,13 @@ from __future__ import annotations
 
 try:
     import pydantic_ai
+    from pydantic_ai import messages
 except ModuleNotFoundError as error:
     raise ImportError(
         "agents.harness.pydantic_ai needs Pydantic AI: install cf-agents[pydantic-ai]"
     ) from error
 
-if tuple(int(part) for part in pydantic_ai.__version__.split(".")[:2]) < (2, 64):
+if not hasattr(messages, "ERROR_OUTCOMES"):
     raise ImportError(
         f"agents.harness.pydantic_ai needs pydantic-ai-slim>=2.64, found "
         f"{pydantic_ai.__version__}. On Python 3.13 Workers, add "
