@@ -8,23 +8,22 @@ theme:
   logo: assets/logo.png
   favicon: assets/logo.png
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/weather-night
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: custom
-      accent: custom
-      toggle:
-        icon: material/weather-sunny
-        name: Switch to light mode
+    scheme: slate
+    primary: custom
+    accent: custom
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - search.highlight
+    - toc.follow
 extra_css:
   - stylesheets/theme.css
   - stylesheets/home.css
+extra_javascript:
+  - javascripts/shortcuts.js
 plugins:
   - search
   - mkdocstrings:
