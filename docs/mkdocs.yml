@@ -63,6 +63,7 @@ nav:
       - Schedule and queue work: agents/schedules-and-queue.md
       - Run durable tasks: agents/tasks.md
       - Build a chat agent: agents/chat.md
+      - Run a Pydantic AI agent: agents/pydantic-ai.md
       - Long-running work: agents/long-running-work.md
       - Use sub-agents: agents/sub-agents.md
       - Migrate from TypeScript: agents/coming-from-typescript.md

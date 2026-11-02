@@ -3,12 +3,12 @@ title: "crosswind-workers: a typed Python Workers SDK"
 description: "What crosswind-workers is, how it relates to workers-runtime-sdk, and when to use it in a Python Worker."
 ---
 
-Use `crosswind-workers` for a
+Use `crosswind-workers` to build a
 [Python Worker](https://developers.cloudflare.com/workers/languages/python/)
-built with Wynd. It replaces Cloudflare's `workers-runtime-sdk` and imports
-as `workers`. It keeps every public name and call signature from the stock
-SDK while adding types and Python methods. pywrangler always installs
-`workers-runtime-sdk`, so projects built with it must use that SDK.
+with Wynd. It imports as `workers` and replaces Cloudflare's
+`workers-runtime-sdk`. The public names and call signatures stay the same;
+Crosswind adds types and Python methods. pywrangler always installs
+`workers-runtime-sdk`, so pywrangler projects use that SDK.
 
 ```python
 from env import Env

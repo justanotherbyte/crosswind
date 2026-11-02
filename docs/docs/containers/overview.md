@@ -3,16 +3,15 @@ title: "Cloudflare Containers SDK for Python Workers"
 description: "What containers-py does, how a Container class maps to a Durable Object and a container instance, and when to use it from a Python Worker."
 ---
 
-`containers-py` lets a
-[Python Worker](https://developers.cloudflare.com/workers/languages/python/)
-start, stop and send requests to
-[Cloudflare Containers](https://developers.cloudflare.com/containers/).
+Use `containers-py` to start Cloudflare Containers from a
+[Python Worker](https://developers.cloudflare.com/workers/languages/python/).
+It starts and stops containers and sends requests to them.
 
-It is a Python port of the
+`containers-py` ports v0.3.7 of the
 [`@cloudflare/containers`](https://github.com/cloudflare/containers)
-TypeScript package, v0.3.7. Defaults, timeouts and state transitions match the
-TypeScript package, so the platform docs apply as written. Names are
-`snake_case` and options are keyword arguments.
+TypeScript package. It keeps the same defaults, timeouts and state transitions,
+so the platform docs apply as written. Python names use `snake_case`; options
+are keyword arguments.
 
 ```python
 from containers import Container, get_container

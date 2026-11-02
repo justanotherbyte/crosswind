@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from .types import (
     HarnessEvent,
     HarnessInput,
+    OperationEvent,
     OperationResult,
     PendingOperation,
     Receipt,
@@ -124,6 +125,41 @@ class HarnessSession:
             yield SessionSnapshot(operations=await self.pending())
             while True:
                 yield await queue.get()
+        finally:
+            self._harness._unsubscribe(self.id, queue)
+
+    async def stream(
+        self, input: HarnessInput, *, operation_id: str | None = None
+    ) -> AsyncIterator[HarnessEvent]:
+        """Submit, then yield this operation's events until it settles.
+
+        Resubmitting an ``operation_id`` that already settled yields nothing;
+        call `wait` for its result.
+        """
+        # Subscribe first: the turn may emit before submit returns.
+        queue = self._harness._subscribe(self.id)
+        try:
+            receipt = await self.submit(input, operation_id=operation_id)
+            operation_id = receipt.operation_id
+            if not receipt.accepted and all(
+                pending.operation_id != operation_id for pending in await self.pending()
+            ):
+                return
+
+            while True:
+                event = await queue.get()
+                if (
+                    isinstance(event, SessionSnapshot)
+                    or event.operation_id != operation_id
+                ):
+                    continue
+
+                yield event
+                if isinstance(event, OperationEvent) and event.status not in (
+                    "queued",
+                    "running",
+                ):
+                    return
         finally:
             self._harness._unsubscribe(self.id, queue)
 

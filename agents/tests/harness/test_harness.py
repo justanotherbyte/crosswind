@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 import pytest
 from fake_runtime import FakeCtx, Host
@@ -25,7 +25,7 @@ type Script = Callable[[Turn], Awaitable[TurnResult]]
 
 async def echo(turn: Turn) -> TurnResult:
     """Append the prompt to the history and answer with it."""
-    turn.emit(TextEvent(operation_id=turn.operation_id, delta=str(turn.input)))
+    turn.emit(TextEvent(operation_id=turn.operation_id, text=str(turn.input)))
 
     history = (turn.history or b"") + str(turn.input).encode() + b";"
     return TurnResult(history=history, text=f"echo {turn.input}")
@@ -387,12 +387,90 @@ def test_watch_yields_a_snapshot_then_events() -> None:
         assert seen == [
             OperationEvent(operation_id="op", status="queued"),
             OperationEvent(operation_id="op", status="running"),
-            TextEvent(operation_id="op", delta="hi"),
+            TextEvent(operation_id="op", text="hi"),
             OperationEvent(operation_id="op", status="done"),
         ]
         await events.aclose()
 
     asyncio.run(scenario())
+
+
+def test_stream_yields_only_its_operation_and_ends_when_it_settles() -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit("first", operation_id="other")
+
+        seen = [event async for event in session.stream("hi", operation_id="op")]
+        assert seen == [
+            OperationEvent(operation_id="op", status="queued"),
+            OperationEvent(operation_id="op", status="running"),
+            TextEvent(operation_id="op", text="hi"),
+            OperationEvent(operation_id="op", status="done"),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_stream_of_a_settled_operation_yields_nothing() -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.prompt("hi", operation_id="op")
+
+        assert [event async for event in session.stream("hi", operation_id="op")] == []
+        assert len(harness.turns) == 1
+
+    asyncio.run(scenario())
+
+
+def test_stream_of_an_open_duplicate_follows_the_operation() -> None:
+    blocker = Blocker()
+    _, harness, _ = setup(blocker)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit("hi", operation_id="op")
+        await blocker.started.wait()
+
+        follower = asyncio.ensure_future(
+            asyncio.wait_for(
+                _collect(session.stream("hi", operation_id="op")), timeout=1
+            )
+        )
+        await asyncio.sleep(0)
+        blocker.release.set()
+
+        assert (await follower)[-1] == OperationEvent(operation_id="op", status="done")
+
+    asyncio.run(scenario())
+
+
+def test_stream_ends_when_the_operation_is_aborted() -> None:
+    blocker = Blocker()
+    _, harness, _ = setup(blocker)
+
+    async def scenario() -> None:
+        session = harness.session()
+        follower = asyncio.ensure_future(
+            asyncio.wait_for(
+                _collect(session.stream("hi", operation_id="op")), timeout=1
+            )
+        )
+        await blocker.started.wait()
+        await session.abort("op")
+
+        assert (await follower)[-1] == OperationEvent(
+            operation_id="op", status="aborted"
+        )
+
+    asyncio.run(scenario())
+
+
+async def _collect[T](events: AsyncIterator[T]) -> list[T]:
+    return [event async for event in events]
 
 
 class Notes:

@@ -23,10 +23,10 @@ def to_harness_event(operation_id: str, event: AgentStreamEvent) -> HarnessEvent
     """Return the harness event for ``event``, or ``None`` if it has none."""
     match event:
         case (
-            PartStartEvent(part=TextPart(content=delta))
-            | PartDeltaEvent(delta=TextPartDelta(content_delta=delta))
-        ) if delta:
-            return TextEvent(operation_id=operation_id, delta=delta)
+            PartStartEvent(part=TextPart(content=text))
+            | PartDeltaEvent(delta=TextPartDelta(content_delta=text))
+        ) if text:
+            return TextEvent(operation_id=operation_id, text=text)
         case FunctionToolCallEvent(part=call):
             return ToolCallEvent(
                 operation_id=operation_id,
