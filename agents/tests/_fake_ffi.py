@@ -7,7 +7,7 @@ the JS ones (e.g. a fake ``sql.exec`` returning a cursor of dicts).
 import copy
 import json
 from collections.abc import Awaitable, Callable, Generator
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
 
@@ -205,6 +205,17 @@ def websocket_rejection(code: int, reason: str) -> Any:
 
 class FetchResponse:
     pass
+
+
+@asynccontextmanager
+async def read_stream(stream: Any) -> Any:
+    """Read a stream that tests pass as a list of bytes."""
+
+    async def chunks() -> Any:
+        for chunk in stream:
+            yield chunk
+
+    yield chunks()
 
 
 def open_fetch(*_args: Any, **_kwargs: Any) -> Any:

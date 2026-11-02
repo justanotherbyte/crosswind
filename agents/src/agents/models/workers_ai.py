@@ -2,26 +2,41 @@
 
 Workers AI chat models answer in one of two shapes: ``response`` with
 ``tool_calls`` (flat or nested under ``function``), or an OpenAI-style
-``choices[0].message``. `Completion` parses both.
+``choices[0].message``. `Completion` parses both. Streamed answers are
+server-sent events of OpenAI-style ``choices[0].delta`` chunks, ending in a
+chunk with the request's ``usage`` and ``[DONE]``.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import Any, Literal, NotRequired, Self, TypedDict
 
 from .. import _ffi
+from ..core.sse import iter_events
 from ..core.types import JSONValue
 
 __all__ = (
     "ChatMessage",
     "Completion",
+    "CompletionEvent",
     "FunctionCall",
     "FunctionSchema",
+    "ReasoningDelta",
+    "TextDelta",
     "ToolCall",
+    "ToolCallDelta",
     "ToolCallPayload",
     "ToolSchema",
     "Usage",
@@ -142,6 +157,68 @@ class Completion:
         )
 
 
+@dataclass(slots=True, frozen=True, kw_only=True)
+class TextDelta:
+    """The next piece of the answer's text."""
+
+    text: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ReasoningDelta:
+    """The next piece of the model's reasoning."""
+
+    text: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ToolCallDelta:
+    """The next piece of the tool call at ``index``.
+
+    The first piece of a call carries its ``id`` and ``name``; later pieces
+    carry only more of the JSON ``arguments``.
+    """
+
+    index: int
+    id: str | None = None
+    name: str | None = None
+    arguments: str = ""
+
+    @classmethod
+    def from_output(cls, data: Mapping[str, Any]) -> Self:
+        """Parse one entry of a chunk's ``delta.tool_calls``."""
+        function = data.get("function") or {}
+
+        return cls(
+            index=data.get("index", 0),
+            id=data.get("id"),
+            name=function.get("name"),
+            arguments=_as_text(function.get("arguments")),
+        )
+
+
+type CompletionEvent = TextDelta | ReasoningDelta | ToolCallDelta | Usage
+"""What `WorkersAIModel.stream` yields; `Usage` counts the whole request."""
+
+
+def _chunk_events(data: Mapping[str, Any]) -> Iterator[CompletionEvent]:
+    if "choices" not in data:
+        if text := _as_text(data.get("response")):
+            yield TextDelta(text=text)
+        if (usage := data.get("usage")) is not None:
+            yield Usage.from_output(usage)
+        return
+
+    for choice in data["choices"][:1]:
+        delta = choice.get("delta") or {}
+        if reasoning := delta.get("reasoning_content") or delta.get("reasoning"):
+            yield ReasoningDelta(text=reasoning)
+        if text := delta.get("content"):
+            yield TextDelta(text=text)
+        for call in delta.get("tool_calls") or ():
+            yield ToolCallDelta.from_output(call)
+
+
 def _as_text(value: object) -> str:
     if value is None:
         return ""
@@ -159,9 +236,10 @@ class WorkersAIModel:
     binding
         The ``ai`` binding (``env.AI``).
     clean_text
-        Rewrites the text of each answer, like ``str.strip`` for a model
-        that starts its answers with blank lines. ``None`` keeps the text
-        as the model sent it.
+        Rewrites the text of each answer `complete` returns, like
+        ``str.strip`` for a model that starts its answers with blank lines.
+        ``None`` keeps the text as the model sent it. `stream` doesn't call
+        it, since it needs the whole text.
 
     Examples
     --------
@@ -211,16 +289,67 @@ class WorkersAIModel:
         ValueError
             If ``messages`` is empty.
         """
-        if not messages:
-            raise ValueError("complete() needs at least one message")
-
-        payload: dict[str, Any] = {**(options or {}), "messages": list(messages)}
-        if tools:
-            payload["tools"] = list(tools)
-
+        payload = _payload(messages, tools, options)
         output = await self.binding.run(self.name, _ffi.py_to_js(payload))
         completion = Completion.from_output(_ffi.js_to_py(output))
         if self.clean_text is None:
             return completion
 
         return replace(completion, text=self.clean_text(completion.text))
+
+    @asynccontextmanager
+    async def stream(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSchema] = (),
+        options: Mapping[str, object] | None = None,
+    ) -> AsyncGenerator[AsyncGenerator[CompletionEvent]]:
+        """Run the model on a conversation and read its answer as it arrives.
+
+        Takes the same arguments as `complete`, and the block iterates over
+        `TextDelta`, `ReasoningDelta` and `ToolCallDelta` pieces, then the
+        request's `Usage`.
+        Leaving the block before the answer ends cancels it.
+
+        Raises
+        ------
+        ValueError
+            If ``messages`` is empty.
+
+        Examples
+        --------
+        >>> async with model.stream(messages) as events:
+        ...     async for event in events:
+        ...         if isinstance(event, TextDelta):
+        ...             print(event.text, end="")
+        """
+        payload = {**_payload(messages, tools, options), "stream": True}
+        body = await self.binding.run(self.name, _ffi.py_to_js(payload))
+
+        async with _ffi.read_stream(body) as chunks:
+            yield _completion_events(chunks)
+
+
+async def _completion_events(
+    chunks: AsyncIterator[bytes],
+) -> AsyncGenerator[CompletionEvent]:
+    async for event in iter_events(chunks):
+        if event.data == "[DONE]":
+            return
+        for item in _chunk_events(json.loads(event.data)):
+            yield item
+
+
+def _payload(
+    messages: Sequence[ChatMessage],
+    tools: Sequence[ToolSchema],
+    options: Mapping[str, object] | None,
+) -> dict[str, Any]:
+    if not messages:
+        raise ValueError("a model call needs at least one message")
+
+    payload: dict[str, Any] = {**(options or {}), "messages": list(messages)}
+    if tools:
+        payload["tools"] = list(tools)
+    return payload

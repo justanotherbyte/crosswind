@@ -10,8 +10,8 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
@@ -33,10 +33,19 @@ from pydantic_ai import (
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 
 from ...models import workers_ai
-from ...models.workers_ai import ChatMessage, Completion, ToolSchema
+from ...models.workers_ai import (
+    ChatMessage,
+    Completion,
+    CompletionEvent,
+    ReasoningDelta,
+    TextDelta,
+    ToolCallDelta,
+    ToolSchema,
+    Usage,
+)
 
 if TYPE_CHECKING:
-    from pydantic_ai import ModelResponsePart, ModelResponseStreamEvent, RunContext
+    from pydantic_ai import ModelResponseStreamEvent, RunContext
     from pydantic_ai.profiles import ModelProfileSpec
 
 __all__ = ("WorkersAIModel",)
@@ -58,9 +67,8 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     """A Workers AI chat model that a Pydantic AI agent can run.
 
     Text only: a prompt with images or files raises `TypeError`. Streamed
-    requests return the whole answer as one chunk, so ``clean_text`` sees
-    the whole text, and the streamed text, the run's output and the stored
-    history all hold what it returns.
+    requests stream text, reasoning and tool calls token by token, and skip
+    whitespace-only text ahead of the answer.
 
     Parameters
     ----------
@@ -76,7 +84,8 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
         The Pydantic AI model profile.
     clean_text
         Rewrites the text of each answer before Pydantic AI sees it.
-        ``None`` keeps the text as the model sent it.
+        ``None`` keeps the text as the model sent it. Streamed requests
+        don't call it, since it needs the whole text.
 
     Examples
     --------
@@ -124,7 +133,9 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
             model_settings, model_request_parameters
         )
 
-        return await self._respond(messages, settings, parameters)
+        chat, tools, options = _to_inputs(messages, settings, parameters)
+        completion = await self.complete(chat, tools=tools, options=options)
+        return _to_model_response(completion, self.name)
 
     @asynccontextmanager
     async def request_stream(
@@ -134,56 +145,66 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
         model_request_parameters: ModelRequestParameters,
         run_context: RunContext[Any] | None = None,
     ) -> AsyncGenerator[StreamedResponse]:
-        """Run `request` and replay its answer as a stream of one chunk."""
+        """Send the conversation to Workers AI and stream its answer."""
         settings, parameters = self.prepare_request(
             model_settings, model_request_parameters
         )
 
-        response = await self._respond(messages, settings, parameters)
-        yield _ReplayedResponse(model_request_parameters=parameters, response=response)
-
-    async def _respond(
-        self,
-        messages: Sequence[ModelMessage],
-        settings: ModelSettings | None,
-        parameters: ModelRequestParameters,
-    ) -> ModelResponse:
-        instructions = InstructionPart.join(parameters.instruction_parts or [])
-        completion = await self.complete(
-            _to_chat_messages(messages, instructions),
-            tools=[_to_tool_schema(tool) for tool in parameters.tool_defs.values()],
-            options=_to_options(settings),
-        )
-
-        return _to_model_response(completion, self.name)
+        chat, tools, options = _to_inputs(messages, settings, parameters)
+        async with self.stream(chat, tools=tools, options=options) as events:
+            yield _StreamedResponse(
+                model_request_parameters=parameters,
+                events=events,
+                name=self.name,
+            )
 
 
 @dataclass
-class _ReplayedResponse(StreamedResponse):
-    response: ModelResponse
-
-    def __post_init__(self) -> None:
-        self._usage = self.response.usage
+class _StreamedResponse(StreamedResponse):
+    events: AsyncGenerator[CompletionEvent]
+    name: str
+    started: datetime = field(default_factory=lambda: datetime.now(UTC))
+    _usage_received: bool | None = field(default=False, init=False)
 
     async def _get_event_iterator(self) -> AsyncIterator[ModelResponseStreamEvent]:
-        for index, part in enumerate(self.response.parts):
-            for event in self._events(index, part):
-                yield event
+        async for event in self.events:
+            match event:
+                case TextDelta(text=text):
+                    for part_event in self._parts_manager.handle_text_delta(
+                        vendor_part_id="content",
+                        content=text,
+                        ignore_leading_whitespace=True,
+                    ):
+                        yield part_event
+                case ReasoningDelta(text=text):
+                    for part_event in self._parts_manager.handle_thinking_delta(
+                        vendor_part_id="reasoning",
+                        content=text,
+                        provider_name=_PROVIDER,
+                    ):
+                        yield part_event
+                case ToolCallDelta():
+                    part_event = self._parts_manager.handle_tool_call_delta(
+                        vendor_part_id=event.index,
+                        tool_name=event.name,
+                        args=event.arguments or None,
+                        tool_call_id=event.id,
+                    )
+                    if part_event is not None:
+                        yield part_event
+                case Usage():
+                    self._add_usage(
+                        _to_request_usage(event), reported=True, cumulative=True
+                    )
 
-    def _events(
-        self, index: int, part: ModelResponsePart
-    ) -> Iterator[ModelResponseStreamEvent]:
-        if isinstance(part, TextPart):
-            yield from self._parts_manager.handle_text_delta(
-                vendor_part_id=index, content=part.content
-            )
-        else:
-            yield self._parts_manager.handle_part(vendor_part_id=index, part=part)
+    async def close_stream(self) -> None:
+        """Stop reading; leaving `request_stream` then cancels the answer."""
+        await self.events.aclose()
 
     @property
     def model_name(self) -> str:
         """The model id."""
-        return self.response.model_name or ""
+        return self.name
 
     @property
     def provider_name(self) -> str:
@@ -197,8 +218,22 @@ class _ReplayedResponse(StreamedResponse):
 
     @property
     def timestamp(self) -> datetime:
-        """When the answer arrived."""
-        return self.response.timestamp
+        """When the request started."""
+        return self.started
+
+
+def _to_inputs(
+    messages: Sequence[ModelMessage],
+    settings: ModelSettings | None,
+    parameters: ModelRequestParameters,
+) -> tuple[list[ChatMessage], list[ToolSchema], dict[str, object]]:
+    instructions = InstructionPart.join(parameters.instruction_parts or [])
+
+    return (
+        _to_chat_messages(messages, instructions),
+        [_to_tool_schema(tool) for tool in parameters.tool_defs.values()],
+        _to_options(settings),
+    )
 
 
 def _to_chat_messages(
@@ -301,10 +336,13 @@ def _to_model_response(completion: Completion, name: str) -> ModelResponse:
 
     return ModelResponse(
         parts=[*thinking, *text, *calls],
-        usage=RequestUsage(
-            input_tokens=completion.usage.input_tokens,
-            output_tokens=completion.usage.output_tokens,
-        ),
+        usage=_to_request_usage(completion.usage),
         model_name=name,
         provider_name=_PROVIDER,
+    )
+
+
+def _to_request_usage(usage: Usage) -> RequestUsage:
+    return RequestUsage(
+        input_tokens=usage.input_tokens, output_tokens=usage.output_tokens
     )

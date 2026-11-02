@@ -5,12 +5,12 @@ from pathlib import Path
 import pydantic_ai
 from fake_runtime import Host
 
-from agents.harness import OperationEvent, TextEvent, tool
+from agents.harness import OperationEvent, TextEvent, ToolCallEvent, tool
 from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel
 from agents.lifecycle import Lifecycle
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "models"))
-from test_workers_ai import FakeAI  # noqa: E402
+from test_workers_ai import SEARCH_STREAM, FakeAI, chunk, sse  # noqa: E402
 
 QWEN = {
     "choices": [
@@ -26,6 +26,11 @@ QWEN = {
 SEARCH = {"id": "c1", "type": "function", "function": {"name": "search", "arguments": '{"query":"milk"}'}}
 
 
+async def search(query: str) -> str:
+    """Search the notes."""
+    return f"found {query}"
+
+
 class Notes:
     @tool(replay="safe")
     async def search(self, query: str) -> str:
@@ -35,18 +40,34 @@ class Notes:
 
 def test_a_tool_round_trip_through_the_harness() -> None:
     ai = FakeAI(
-        {"response": "", "tool_calls": [SEARCH]},
-        {"response": "You have milk."},
+        sse(*SEARCH_STREAM, usage=(10, 4)),
+        sse(chunk({"content": "You have"}), chunk({"content": " milk."}), usage=(20, 3)),
     )
     model = WorkersAIModel("@cf/model", binding=ai, settings={"max_tokens": 50})
     agent = pydantic_ai.Agent(model, instructions="Be brief.")
     harness = PydanticAIHarness("notes", agent, target=Notes())
     Lifecycle(Host()).use(harness)
 
-    result = asyncio.run(harness.prompt("milk?"))
+    async def scenario() -> list[object]:
+        events = harness.session().watch()
+        await anext(events)
+        result = await harness.session().prompt("milk?", operation_id="op")
+        assert result.text == "You have milk."
+        seen = []
+        while not isinstance(event := await anext(events), OperationEvent) or event.status not in ("done", "failed"):
+            seen.append(event)
+        await events.aclose()
+        return seen
 
-    assert result.text == "You have milk."
+    seen = asyncio.run(scenario())
+
+    assert ToolCallEvent(operation_id="op", tool_call_id="c1", name="search", args={"query": "milk"}) in seen
+    assert [event for event in seen if isinstance(event, TextEvent)] == [
+        TextEvent(operation_id="op", delta="You have"),
+        TextEvent(operation_id="op", delta=" milk."),
+    ]
     first, second = (payload for _, payload in ai.calls)
+    assert first["stream"] is True
     assert first["max_tokens"] == 50
     *opening, instructions, prompt = first["messages"]
     assert all(message["role"] == "system" for message in opening)
@@ -72,6 +93,95 @@ def test_reasoning_becomes_a_thinking_part() -> None:
     assert text == pydantic_ai.TextPart("\n\nSunny.")
 
 
+def test_a_streamed_answer_counts_the_requests_usage() -> None:
+    ai = FakeAI(sse(chunk({"content": "Hi"}), usage=(36, 2)))
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai))
+
+    async def run() -> pydantic_ai.RunUsage:
+        async with agent.run_stream("hey") as stream:
+            assert [text async for text in stream.stream_text(delta=True)] == ["Hi"]
+        return stream.usage
+
+    usage = asyncio.run(run())
+
+    assert (usage.input_tokens, usage.output_tokens) == (36, 2)
+
+
+def test_a_streamed_answer_can_be_cancelled() -> None:
+    ai = FakeAI(sse(chunk({"content": "One"}), chunk({"content": " two"})))
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai))
+
+    async def run() -> list[str]:
+        async with agent.run_stream("count") as stream:
+            seen = []
+            async for text in stream.stream_text(delta=True, debounce_by=None):
+                seen.append(text)
+                await stream.cancel()
+            return seen
+
+    assert asyncio.run(run()) == ["One"]
+
+
+def test_a_streamed_qwen_turn_keeps_reasoning_and_skips_blank_text() -> None:
+    ai = FakeAI(
+        sse(
+            chunk({"reasoning_content": "Use search."}),
+            chunk({"content": "\n\n"}),
+            *SEARCH_STREAM[1:],
+        ),
+        sse(chunk({"content": "\n\n"}), chunk({"content": "You have milk."})),
+    )
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai))
+    harness = PydanticAIHarness("notes", agent, target=Notes())
+    Lifecycle(Host()).use(harness)
+
+    async def scenario() -> list[object]:
+        events = harness.session().watch()
+        await anext(events)
+        await harness.session().prompt("milk?", operation_id="op")
+        seen = []
+        while not isinstance(event := await anext(events), OperationEvent) or event.status not in ("done", "failed"):
+            seen.append(event)
+        await events.aclose()
+        return seen
+
+    seen = asyncio.run(scenario())
+
+    assert [event for event in seen if isinstance(event, TextEvent)] == [
+        TextEvent(operation_id="op", delta="You have milk.")
+    ]
+    tool_turn = ai.calls[1][1]["messages"][-2]
+    assert tool_turn["content"] == ""
+    assert tool_turn["tool_calls"][0]["function"]["name"] == "search"
+
+
+def test_run_stream_skips_blank_text_before_a_tool_call() -> None:
+    ai = FakeAI(
+        sse(chunk({"reasoning_content": "Use search."}), chunk({"content": "\n\n"}), *SEARCH_STREAM[1:]),
+        sse(chunk({"content": "You have milk."})),
+    )
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai), tools=[search])
+
+    async def run() -> tuple[str, list[pydantic_ai.ModelMessage]]:
+        async with agent.run_stream("milk?") as stream:
+            return await stream.get_output(), stream.all_messages()
+
+    output, messages = asyncio.run(run())
+
+    assert output == "You have milk."
+    first = messages[1]
+    assert isinstance(first, pydantic_ai.ModelResponse)
+    assert first.parts[0] == pydantic_ai.ThinkingPart("Use search.", provider_name="cloudflare")
+
+
+def test_request_still_answers_without_streaming() -> None:
+    ai = FakeAI({"response": "Hi"})
+    agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai))
+
+    assert asyncio.run(agent.run("hey")).output == "Hi"
+    assert "stream" not in ai.calls[0][1]
+
+
 def test_non_text_prompts_are_rejected() -> None:
     agent = pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=FakeAI()))
     image = pydantic_ai.ImageUrl("https://example.com/a.png")
@@ -84,10 +194,18 @@ def test_non_text_prompts_are_rejected() -> None:
         raise AssertionError("expected TypeError")
 
 
-def test_clean_text_reaches_events_output_and_history() -> None:
-    ai = FakeAI(QWEN, {"response": "Still sunny."})
-    model = WorkersAIModel("@cf/model", binding=ai, clean_text=str.strip)
-    harness = PydanticAIHarness("notes", pydantic_ai.Agent(model), target=Notes())
+def test_streamed_blank_lines_skip_events_output_and_history() -> None:
+    ai = FakeAI(
+        sse(
+            chunk({"reasoning_content": "The user wants the weather."}),
+            chunk({"content": "\n\n"}),
+            chunk({"content": "Sunny."}),
+        ),
+        sse(chunk({"content": "Still sunny."})),
+    )
+    harness = PydanticAIHarness(
+        "notes", pydantic_ai.Agent(WorkersAIModel("@cf/model", binding=ai)), target=Notes()
+    )
     Lifecycle(Host()).use(harness)
 
     async def scenario() -> list[object]:
