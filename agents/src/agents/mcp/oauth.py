@@ -1,11 +1,7 @@
-"""Where a server's OAuth state lives.
+"""Port of upstream ``client/do-oauth-client-provider.ts``.
 
-Tokens, client credentials, and the ``state`` / PKCE verifier that a later
-callback request redeems.
-
-Port of upstream ``client/do-oauth-client-provider.ts``, with its Durable
-Object KV key layout, so state written by a TypeScript agent is read here
-(``.design/mcp_engine.md`` §7.1).
+It keeps upstream's Durable Object KV key layout, so state written by a
+TypeScript agent is read here. See ``.design/mcp_engine.md`` §7.1.
 """
 
 import secrets
@@ -29,8 +25,6 @@ _DELETE_CHUNK = 128
 
 
 class OAuthDiscoveryState(TypedDict, total=False):
-    """What discovery found, kept for the callback's code exchange."""
-
     authorizationServerUrl: str
     resourceMetadataUrl: str
     resourceMetadata: dict[str, Any]
@@ -41,7 +35,7 @@ class OAuthDiscoveryState(TypedDict, total=False):
 class MCPOAuthProvider(ABC):
     """Stores one server's OAuth state; override it for another client setup.
 
-    ``server_id`` and ``client_id`` are set by the client before use.
+    The client sets ``server_id`` and ``client_id`` before use.
 
     Parameters
     ----------
@@ -160,11 +154,16 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
             "token_endpoint_auth_method": "none",
         }
 
-    # Keys
-
     @property
     def _server_prefix(self) -> str:
         return f"/{self.client_name}/{self.server_id}"
+
+    @property
+    def _discovery_key(self) -> str:
+        return f"{self._server_prefix}/oauth_discovery"
+
+    def _state_key(self, nonce: str) -> str:
+        return f"{self._server_prefix}/state/{nonce}"
 
     def _client_key(self, suffix: str) -> str | None:
         if self.client_id is None:
@@ -174,8 +173,6 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
     def _verifier_key(self, state: str) -> str | None:
         nonce = _nonce(state)
         return None if nonce is None else self._client_key(f"code_verifier/{nonce}")
-
-    # Storage
 
     async def _get(self, key: str | None) -> Any:
         return None if key is None else _ffi.js_to_py(await self._storage.get(key))
@@ -189,8 +186,6 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
         if present:
             await self._storage.delete(_ffi.py_to_js(present))
 
-    # Tokens and client credentials
-
     async def tokens(self) -> OAuthTokens | None:
         """Return the stored tokens."""
         return await self._get(self._client_key("token"))
@@ -198,7 +193,7 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
     async def save_tokens(self, tokens: OAuthTokens) -> None:
         """Store new tokens; the discovery state is no longer needed."""
         await self._put(self._client_key("token"), tokens)
-        await self._delete(f"{self._server_prefix}/oauth_discovery")
+        await self._delete(self._discovery_key)
 
     async def clear_tokens(self) -> None:
         """Forget the tokens."""
@@ -220,19 +215,17 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
 
     async def discovery_state(self) -> OAuthDiscoveryState | None:
         """Return what discovery found for the pending authorization."""
-        return await self._get(f"{self._server_prefix}/oauth_discovery")
+        return await self._get(self._discovery_key)
 
     async def save_discovery_state(self, state: OAuthDiscoveryState) -> None:
         """Store what discovery found."""
-        await self._put(f"{self._server_prefix}/oauth_discovery", state)
-
-    # The state parameter and the PKCE verifier
+        await self._put(self._discovery_key, state)
 
     async def create_state(self) -> str:
         """Return a new ``state`` parameter, stored for 10 minutes."""
         nonce = secrets.token_urlsafe(16)
         stored = {"nonce": nonce, "serverId": self.server_id, "createdAt": now_ms()}
-        await self._put(f"{self._server_prefix}/state/{nonce}", stored)
+        await self._put(self._state_key(nonce), stored)
         return f"{nonce}.{self.server_id}"
 
     async def check_state(self, state: str) -> StateCheck:
@@ -241,7 +234,7 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
         if parts is None:
             return StateCheck(valid=False, error="Invalid state format")
         nonce, server_id = parts
-        key = f"{self._server_prefix}/state/{nonce}"
+        key = self._state_key(nonce)
         stored = await self._get(key)
         if stored is None:
             return StateCheck(valid=False, error="State not found or already used")
@@ -257,7 +250,7 @@ class DurableObjectOAuthProvider(MCPOAuthProvider):
         """Use ``state`` up."""
         nonce = _nonce(state)
         if nonce is not None:
-            await self._delete(f"{self._server_prefix}/state/{nonce}")
+            await self._delete(self._state_key(nonce))
 
     async def save_code_verifier(self, state: str, verifier: str) -> None:
         """Store the PKCE verifier for ``state``."""

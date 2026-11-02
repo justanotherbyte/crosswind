@@ -11,6 +11,7 @@ from typing import Any
 from .errors import WyndError
 from .project import Project
 from .targets import Target
+from .utils import read_text
 
 __all__ = ("select_sdk", "sync")
 
@@ -24,7 +25,7 @@ def sync(project: Project, target: Target) -> None:
     token_path = project.run_dir / "synced"
     if (
         project.python_modules.is_dir()
-        and text(token_path) == token(project, target)
+        and read_text(token_path) == token(project, target)
         and not has_local_sources(project)
     ):
         return
@@ -76,8 +77,8 @@ def normalize_name(requirement: str) -> str:
 def token(project: Project, target: Target) -> str:
     inputs = [
         str(project.source.path),
-        text(project.root / "pyproject.toml"),
-        text(project.root / "pylock.toml"),
+        read_text(project.root / "pyproject.toml"),
+        read_text(project.root / "pylock.toml"),
         target.version,
         project.config.compatibility_date,
         project.config.compatibility_flags,
@@ -85,13 +86,6 @@ def token(project: Project, target: Target) -> str:
     ]
 
     return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
-
-
-def text(path: Path) -> str:
-    try:
-        return path.read_text()
-    except FileNotFoundError:
-        return ""
 
 
 def check_uv(project: Project) -> None:
@@ -143,7 +137,8 @@ def install(project: Project, target: Target, staging: Path) -> None:
 
 
 def locked_packages(project: Project) -> list[dict[str, Any]]:
-    return tomllib.loads(text(project.root / "pylock.toml")).get("packages", [])
+    lock = read_text(project.root / "pylock.toml") or ""
+    return tomllib.loads(lock).get("packages", [])
 
 
 def has_local_sources(project: Project) -> bool:

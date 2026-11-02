@@ -1,9 +1,6 @@
-"""Structured events: the default sink and in-process subscriptions.
+"""Port of upstream ``observability/``, events only.
 
-Port of upstream ``observability/`` (events only; tracing is out of scope).
-The default sink writes each event as one JSON line to the
-``agents.events`` logger at ``DEBUG``, and notifies `subscribe` listeners on
-the event's channel (``.design/observability.md`` §5).
+Tracing is out of scope (``.design/observability.md`` §5).
 """
 
 import logging
@@ -44,12 +41,8 @@ _PREFIXES = (
 )
 
 
+# Port of upstream getChannel.
 def channel_for(event_type: str) -> str:
-    """Return the channel an event type belongs to (upstream ``getChannel``).
-
-    ``"queue:error"`` is on ``"schedule"``, ``"rpc"`` on ``"rpc"``; anything
-    unmatched (``"connect"``, ``"destroy"``, ``"job:..."``) is ``"lifecycle"``.
-    """
     if event_type == "rpc":
         return "rpc"
     for prefix, channel in _PREFIXES:
@@ -66,10 +59,7 @@ def subscribe(
     In-process only, for tests and local debugging. Dispose the result to
     unsubscribe.
     """
-    emitter = _channels.get(channel)
-    if emitter is None:
-        emitter = _channels[channel] = Emitter()
-    return emitter.subscribe(listener)
+    return _channels.setdefault(channel, Emitter()).subscribe(listener)
 
 
 class LoggingObservability:

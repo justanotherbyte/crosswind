@@ -1,10 +1,9 @@
-"""Persistent schedules: the Scheduler capability.
+"""Port of upstream ``schedules/scheduler.ts``.
 
-Port of upstream ``schedules/scheduler.ts``. Scheduler owns no storage: each
-schedule is one Lifecycle job whose ``fn`` is the callback name and whose
-payload carries the schedule's timing and the Lifecycle that owns it.
-Lifecycle runs the alarm loop, the retries, and the physical alarm
-(``.design/scheduling_queue_tasks_api.md``).
+Scheduler owns no storage: each schedule is one Lifecycle job whose ``fn`` is
+the callback name and whose payload carries the schedule's timing and the
+Lifecycle that owns it. Lifecycle runs the alarm loop, the retries, and the
+physical alarm (``.design/scheduling_queue_tasks_api.md``).
 """
 
 import dataclasses
@@ -15,7 +14,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, cast, override
 
-from ..core.methods import get_bound_method, method_name
+from ..core.methods import method_name, resolve_callback
 from ..core.platform_errors import is_code_update_reset, is_platform_failure
 from ..core.retry import run_with_retries, validate_retry_options
 from ..core.timing import epoch_ms, from_epoch_ms, now_ms
@@ -98,8 +97,6 @@ class Scheduler(LifecycleCapability):
         self._hung_timeout = hung_schedule_timeout
         self._on_error = on_error
         self._warned_startup_callbacks: set[str] = set()
-
-    # Scheduling
 
     async def set(
         self,
@@ -267,8 +264,6 @@ class Scheduler(LifecycleCapability):
             )
         return schedule
 
-    # Lifecycle capability hooks
-
     @override
     async def on_start(self) -> None:
         """Forget startup warnings, and record the storage version once."""
@@ -299,11 +294,8 @@ class Scheduler(LifecycleCapability):
                 },
             )
 
-        owner_path = envelope["owner_path"]
-        if owner_path is not None:
-            owner = RouteAddress(
-                key=envelope["owner_path_key"] or owner_path, data=owner_path
-            )
+        owner = _owner(envelope)
+        if owner is not None:
             if not await self._dispatch_to_owner(owner, job, envelope):
                 return "yield"
             return _recurrence(envelope)
@@ -371,15 +363,9 @@ class Scheduler(LifecycleCapability):
                 return True
         raise ValueError(f"Unknown routed Scheduler message {message!r}")
 
-    # Dispatch
-
     async def _dispatch_to_owner(
         self, owner: RouteAddress, job: LifecycleJob, envelope: ScheduleJobPayload
     ) -> bool:
-        """Hand a facet's schedule to the facet; return whether it was delivered.
-
-        The facet retries the callback itself, so this is one attempt.
-        """
         message: DispatchMessage = {
             "type": "dispatch",
             "schedule": WireSchedule(
@@ -387,6 +373,7 @@ class Scheduler(LifecycleCapability):
             ),
             "retry": retry_to_json(job.retry) if job.retry is not None else None,
         }
+        # One attempt only, because the facet retries the callback itself.
         try:
             await self.lifecycle.routes.to(owner, message)
         except Exception as error:
@@ -404,11 +391,6 @@ class Scheduler(LifecycleCapability):
     async def _run_routed(
         self, schedule: Schedule, envelope: ScheduleJobPayload, retry: RetryOptions
     ) -> None:
-        """Run a routed schedule here, in its owning facet, with its own retries.
-
-        A one-shot's platform failure re-raises, so the root keeps the job
-        and its alarm retries it in a fresh invocation.
-        """
         handler = self._resolve(schedule.callback)
         if handler is None:
             _log.error("Schedule callback %r not found", schedule.callback)
@@ -423,6 +405,8 @@ class Scheduler(LifecycleCapability):
                 ),
             )
         except Exception as error:
+            # Re-raise a one-shot's platform failure so the root keeps the job
+            # and its alarm retries it in a fresh invocation.
             if one_shot and is_platform_failure(error):
                 raise
             await self._report_failure(
@@ -474,8 +458,6 @@ class Scheduler(LifecycleCapability):
             # The observer failing must not fail the Scheduler (upstream swallows).
             _log.exception("Scheduler on_error handler failed")
 
-    # Storage
-
     async def _insert(
         self,
         owner: RouteAddress | None,
@@ -485,10 +467,6 @@ class Scheduler(LifecycleCapability):
         retry_json: str | None,
         idempotent: bool | None,
     ) -> tuple[Schedule, bool]:
-        """Push a schedule job, or reuse the one an idempotent call matches.
-
-        Returns the schedule and whether it's new.
-        """
         # Recurring schedules deduplicate unless told not to; one-shots only
         # when asked.
         if idempotent if idempotent is not None else is_recurring(timing):
@@ -528,7 +506,7 @@ class Scheduler(LifecycleCapability):
         callback: str,
         payload: JSONValue,
     ) -> Schedule | None:
-        key = owner.key if owner is not None else None
+        key = _owner_key(owner)
         payload_json = json.dumps(payload, sort_keys=True)
         for job, envelope in self._owned_jobs():
             if (
@@ -543,12 +521,11 @@ class Scheduler(LifecycleCapability):
         return None
 
     def _owned_jobs(self) -> Sequence[tuple[LifecycleJob, ScheduleJobPayload]]:
-        owned = []
-        for job in self.lifecycle.jobs.list():
-            envelope = _envelope(job)
-            if envelope is not None:
-                owned.append((job, envelope))
-        return owned
+        return [
+            (job, envelope)
+            for job in self.lifecycle.jobs.list()
+            if (envelope := _envelope(job)) is not None
+        ]
 
     def _get_for_owner(self, owner: RouteAddress | None, id: str) -> Schedule | None:
         job = self.lifecycle.jobs.get(id)
@@ -585,7 +562,6 @@ class Scheduler(LifecycleCapability):
     async def _cancel_for_owner(
         self, owner: RouteAddress | None, id: str
     ) -> str | None:
-        """Cancel one schedule; return its callback name, or ``None`` if absent."""
         found = self._get_for_owner(owner, id)
         if found is None:
             return None
@@ -593,19 +569,15 @@ class Scheduler(LifecycleCapability):
         return found.callback
 
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Remove the schedules owned by one routed Lifecycle subtree (internal)."""
         for job, envelope in self._owned_jobs():
-            owner_path = envelope["owner_path"]
-            if owner_path is None:
-                continue
-            key = envelope["owner_path_key"] or owner_path
-            if key == prefix or key.startswith(f"{prefix}/"):
+            owner = _owner(envelope)
+            if owner is not None and (
+                owner.key == prefix or owner.key.startswith(f"{prefix}/")
+            ):
                 self.lifecycle.emit(
                     "schedule:cancel", {"callback": job.fn, "id": job.id}
                 )
                 await self.lifecycle.jobs.cancel(job.id)
-
-    # Callbacks
 
     def _require_callback(self, callback: str | Callable[..., Any]) -> str:
         if isinstance(callback, str):
@@ -624,22 +596,11 @@ class Scheduler(LifecycleCapability):
         return name
 
     def _resolve(self, name: str) -> ScheduleCallback | None:
-        """Return the callback registered as ``name`` (the dict, then ``target``)."""
-        handler = self._callbacks.get(name)
-        if handler is not None or self._target is None:
-            return handler
-        try:
-            return get_bound_method(self._target, name)
-        except (AttributeError, TypeError):
-            return None
+        return resolve_callback(self._callbacks, self._target, name)
 
     def _warn_if_scheduled_during_startup(
         self, timing: ScheduleTiming, callback: str, idempotent: bool | None
     ) -> None:
-        """Warn once per callback about a one-shot created on every wake.
-
-        Passing ``idempotent`` either way opts out.
-        """
         if (
             self.lifecycle.status() != "starting"
             or idempotent is not None
@@ -661,8 +622,14 @@ def _owner_key(owner: RouteAddress | None) -> str | None:
     return owner.key if owner is not None else None
 
 
+def _owner(envelope: ScheduleJobPayload) -> RouteAddress | None:
+    owner_path = envelope["owner_path"]
+    if owner_path is None:
+        return None
+    return RouteAddress(key=envelope["owner_path_key"] or owner_path, data=owner_path)
+
+
 def _envelope(job: LifecycleJob) -> ScheduleJobPayload | None:
-    """Return a schedule job's payload, or ``None`` if it's malformed."""
     raw = job.payload
     if not isinstance(raw, dict):
         return None
@@ -702,7 +669,6 @@ def _timing(envelope: ScheduleJobPayload) -> ScheduleTiming:
 
 
 def _recurrence(envelope: ScheduleJobPayload) -> JobOutcome:
-    """Move a recurring schedule to its next time; complete a one-shot."""
     cron = envelope["cron"]
     if envelope["type"] == "cron" and cron is not None:
         return Reschedule(at=from_epoch_ms(next_cron_ms(cron, now_ms())))

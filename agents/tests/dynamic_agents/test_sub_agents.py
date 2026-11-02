@@ -141,9 +141,6 @@ async def connect(root: Any, path: str) -> FakeWebSocket:
     return response.web_socket.peer
 
 
-# Creating and reaching sub-agents
-
-
 def test_get_creates_a_facet_with_its_own_identity_and_storage() -> None:
     world, inbox = make_world()
 
@@ -209,9 +206,6 @@ def test_worker_side_helpers() -> None:
     summary, response = asyncio.run(scenario())
     assert summary["name"] == "c9"
     assert response.body == "chat c9 https://x.dev/hello"
-
-
-# Lifecycle and routed work
 
 
 def test_abort_keeps_storage_and_delete_wipes_it() -> None:
@@ -294,9 +288,6 @@ def test_destroy_on_a_facet_asks_the_root_to_delete_it() -> None:
     asyncio.run(scenario())
 
 
-# HTTP
-
-
 def test_http_requests_reach_the_sub_agent_through_the_gate() -> None:
     _, inbox = make_world()
 
@@ -331,9 +322,6 @@ def test_route_status_follows_the_error_type_not_its_message() -> None:
 
     # A NUL name never parses as a sub-agent route; a class named Sub is the server's fault.
     assert asyncio.run(scenario()) == [404, 500]
-
-
-# WebSockets: the root keeps the socket
 
 
 def test_a_sub_agent_connection_gets_the_childs_connect_sequence() -> None:

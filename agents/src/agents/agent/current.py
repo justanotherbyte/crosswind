@@ -1,7 +1,6 @@
-"""``get_current_agent()``: the agent the running code belongs to.
+"""Port of upstream ``getCurrentAgent`` (``lifecycle/current-agent.ts``).
 
-Port of upstream ``getCurrentAgent`` (``lifecycle/current-agent.ts``), read
-from the Lifecycle host context (``.design/agent_api.md`` §1.16).
+It reads the Lifecycle host context (``.design/agent_api.md`` §1.16).
 """
 
 from typing import TYPE_CHECKING, Any, cast

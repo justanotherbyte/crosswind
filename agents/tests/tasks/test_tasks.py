@@ -58,9 +58,6 @@ def event_types(events: list[LifecycleEvent]) -> list[str]:
     return [event.type for event in events]
 
 
-# Running
-
-
 def test_a_run_completes_with_its_result_and_events() -> None:
     async def double(n: int, step: TaskStep) -> int:
         async def compute(_attempt: TaskStepAttempt) -> int:
@@ -257,9 +254,6 @@ def test_signals_are_not_swallowed_by_except_exception() -> None:
     assert isinstance(asyncio.run(scenario()), WaitingRun)
 
 
-# Cancelling
-
-
 def test_cancelling_a_parked_run_settles_it_now() -> None:
     async def handler(_input: Any, step: TaskStep) -> None:
         await step.sleep("pause", 60)
@@ -302,9 +296,6 @@ def test_cancelling_a_live_run_cancels_its_step() -> None:
     assert isinstance(run, CancelledRun) and run.reason == "stop"
 
 
-# Acceptance
-
-
 def test_idempotency_keys_join_the_existing_run() -> None:
     async def handler(_input: Any, _step: TaskStep) -> None: ...
 
@@ -331,9 +322,6 @@ def test_invalid_runs_are_rejected() -> None:
         asyncio.run(tasks.run("missing"))
     with pytest.raises(TaskSerializationError):
         asyncio.run(tasks.run("h", {"when": datetime.now(UTC)}))  # ty: ignore[invalid-argument-type]
-
-
-# Replay checks
 
 
 def test_duplicate_step_names_fail_the_run() -> None:
@@ -397,9 +385,6 @@ def test_a_run_whose_definition_disappeared_fails() -> None:
 
     run = asyncio.run(scenario())
     assert isinstance(run, FailedRun) and run.error.name == "MissingTaskDefinitionError"
-
-
-# Recovery
 
 
 def test_an_interrupted_attempt_replays_with_evidence() -> None:
@@ -527,9 +512,6 @@ def test_a_long_attempt_detaches_from_the_alarm_loop(
     assert isinstance(run, CompletedRun) and run.result == "done"
 
 
-# Status, retention, listing
-
-
 def test_status_is_silent_while_replaying_old_ground() -> None:
     async def handler(_input: Any, step: TaskStep) -> None:
         await step.status("phase 1")
@@ -605,9 +587,6 @@ def test_delete_with_an_empty_status_list_deletes_nothing() -> None:
 
     asyncio.run(scenario())
     assert "task:deleted" not in event_types(events)
-
-
-# @task on an agent
 
 
 class Reports(Agent):
@@ -738,9 +717,6 @@ def test_a_lone_surrogate_round_trips() -> None:
 
     run = asyncio.run(scenario())
     assert isinstance(run, CompletedRun) and run.result == "a\ud800b"
-
-
-# Facets: the run lives on the facet, its wake on the root
 
 
 def facet_setup(handler: Any) -> tuple[Lifecycle, Tasks, Lifecycle, Tasks]:

@@ -1,9 +1,3 @@
-"""Serving one Workers request with an ASGI app.
-
-The app runs in its own task. A response sent in one body message is
-returned whole; one sent in several (SSE) streams as the client reads it.
-"""
-
 import asyncio
 import codecs
 from collections.abc import AsyncIterator, Callable, Coroutine
@@ -21,21 +15,11 @@ __all__ = ("serve",)
 _running: set[asyncio.Task[None]] = set()
 
 
+# The app runs in its own task and this returns at its first body message, so a
+# streamed (SSE) body keeps being produced while the client reads it.
 async def serve(
     app: Callable[[Scope, Receive, Send], Coroutine[Any, Any, None]], request: Request
 ) -> Response:
-    """Run ``app`` for ``request`` and return its response.
-
-    Returns once the app sends its first body message, so a streamed body
-    keeps being produced while the client reads it.
-
-    Raises
-    ------
-    Exception
-        Whatever the app raised before it started responding.
-    RuntimeError
-        If the app returned without responding.
-    """
     exchange = _Exchange(await request.bytes())
     task = asyncio.create_task(app(_scope(request), exchange.receive, exchange.send))
     _running.add(task)
@@ -51,7 +35,7 @@ async def serve(
     if exchange.finished.is_set():
         await task
         return Response(
-            exchange.body(), status=exchange.status, headers=exchange.headers
+            exchange.finished_body(), status=exchange.status, headers=exchange.headers
         )
     # shortcut: streaming_response always answers 200; every SDK stream (SSE)
     # is a 200, so pass the status through if that ever changes.
@@ -78,8 +62,6 @@ def _scope(request: Request) -> Scope:
 
 
 class _Exchange:
-    """The ASGI ``receive`` / ``send`` pair for one request."""
-
     __slots__ = ("_chunks", "_request_body", "finished", "headers", "started", "status")
 
     def __init__(self, body: bytes) -> None:
@@ -114,15 +96,13 @@ class _Exchange:
             self.finished.set()
         self.started.set()
 
-    def body(self) -> bytes:
-        """Return a finished response's body."""
+    def finished_body(self) -> bytes:
         chunks: list[bytes] = []
         while (chunk := self._chunks.get_nowait()) is not None:
             chunks.append(chunk)
         return b"".join(chunks)
 
     async def stream(self, task: asyncio.Task[None]) -> AsyncIterator[str]:
-        """Yield the body as it's sent; stop the app if the client goes away."""
         decoder = codecs.getincrementaldecoder("utf-8")()
         # An app that fails mid-stream never sends the last chunk; end the
         # stream anyway so `await task` below raises its error.

@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import ProjectNotFoundError, WyndError
-from .sources import ConfigParser, find_up, read
+from .sources import ConfigParser
+from .utils import find_up, read
 from .wrangler_config import WranglerConfig
 
 __all__ = ("Project", "load_project")
@@ -27,13 +28,13 @@ class Project:
 
     @property
     def run_dir(self) -> Path:
-        """Path: stands in for the config's directory in every dev and
-        passthrough run, because Wrangler reads files beside its config."""
+        """Stands in for the config's directory in every dev and passthrough
+        run, because Wrangler reads files beside its config."""
         return self.wynd_dir / "run" / self.source.path.parent.relative_to(self.root)
 
     @property
     def python_modules(self) -> Path:
-        """Path: the full tree, beside every staged file."""
+        """The full package tree, beside every staged file."""
         return self.run_dir / "python_modules"
 
 

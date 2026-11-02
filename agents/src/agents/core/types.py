@@ -1,8 +1,6 @@
-"""Types shared across the SDK."""
-
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Protocol
 
 __all__ = (
     "Duration",
@@ -24,8 +22,8 @@ type SqlValue = int | float | str | bytes | None
 """A value SQLite accepts as a parameter."""
 
 
-type ShouldRetry = Callable[[Exception, int], bool]
-"""Decides whether to retry: called with the error and the next attempt number."""
+class ShouldRetry(Protocol):
+    def __call__(self, error: Exception, next_attempt: int, /) -> bool: ...
 
 
 @dataclass(slots=True, kw_only=True)

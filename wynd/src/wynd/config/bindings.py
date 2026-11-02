@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import KW_ONLY, dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from ..wrangler_config import JSON
 from . import exports
 from .utils import to_table
 
@@ -27,8 +28,6 @@ __all__ = (
     "VersionMetadata",
     "Workflow",
 )
-
-type JSON = None | bool | int | float | str | list[JSON] | dict[str, JSON]
 
 
 class Binding:
@@ -67,19 +66,16 @@ class Binding:
 
 
 @dataclass(frozen=True)
-class Text(Binding):
-    value: str
+class Json(Binding):
+    value: JSON
 
     def emit(self, name: str, out: dict[str, Any], worker: Worker) -> None:
         out.setdefault("vars", {})[name] = self.value
 
 
 @dataclass(frozen=True)
-class Json(Binding):
-    value: JSON
-
-    def emit(self, name: str, out: dict[str, Any], worker: Worker) -> None:
-        out.setdefault("vars", {})[name] = self.value
+class Text(Json):
+    value: str
 
 
 @dataclass(frozen=True)

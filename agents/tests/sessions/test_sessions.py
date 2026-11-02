@@ -6,6 +6,7 @@ import pytest
 from fake_runtime import Host
 
 import agents.sessions.sessions as sessions_module
+from agents.core.encoding import to_js_json
 from agents.lifecycle import Lifecycle, LifecycleEvent
 from agents.sessions import (
     SessionChangeEvent,
@@ -51,9 +52,6 @@ def ids(messages: list[SessionMessage]) -> list[str]:
 
 def lifecycle_types(events: list[LifecycleEvent]) -> list[str]:
     return [e.type for e in events if e.type.startswith("session:")]
-
-
-# Writes
 
 
 def test_append_is_ordered_and_idempotent() -> None:
@@ -157,6 +155,8 @@ def test_stripping_reserved_metadata_keeps_other_fields() -> None:
         "parts": [{"type": "text", "text": "b"}],
         "createdAt": "2026-01-02",
     }
+
+
 def test_a_nan_message_raises_and_stores_nothing() -> None:
     _, sessions, _ = setup()
 
@@ -195,10 +195,10 @@ def test_large_messages_span_rows(monkeypatch: pytest.MonkeyPatch) -> None:
         ]
 
     before, stats, after, history = run(sessions, scenario)
-    stored = sessions_module._dumps(msg("big", big))
+    stored = to_js_json(msg("big", big))
     assert before == len(split_content(stored, 40)) - 1 > 0
     assert stats[0].bytes == len(stored.encode())
-    small = sessions_module._dumps(msg("big", "small now"))
+    small = to_js_json(msg("big", "small now"))
     # The shrunk message dropped the continuations it no longer needs.
     assert after == len(split_content(small, 40)) - 1 < before
     assert history[0]["parts"][0]["text"] == "small now"
@@ -255,9 +255,6 @@ def test_sessions_are_separate() -> None:
     assert run(sessions, scenario) == [["a"], ["a", "b"]]
 
 
-# Reads
-
-
 def test_recent_history_fits_the_budget_and_keeps_the_leaf() -> None:
     _, sessions, _ = setup()
 
@@ -310,9 +307,6 @@ def test_unparseable_rows_are_skipped() -> None:
         return ids(await session.get_history())
 
     assert run(sessions, scenario) == ["b"]
-
-
-# The change feed
 
 
 def test_mirror_follows_writes() -> None:
@@ -387,9 +381,6 @@ def test_a_failing_listener_is_reported_and_isolated() -> None:
         "event": "append",
         "error": "listener broke",
     }
-
-
-# The synchronous upsert inside a Streams cutover
 
 
 def test_the_synchronous_upsert_lands_in_a_stream_cutover() -> None:

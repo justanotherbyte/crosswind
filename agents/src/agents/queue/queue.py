@@ -1,10 +1,9 @@
-"""Durable background work: the Queue capability.
+"""Port of upstream ``queue/queue.ts``.
 
-Port of upstream ``queue/queue.ts``. Queue owns no storage: each pushed item
-becomes a Lifecycle job due immediately, whose ``fn`` is the callback name and
-whose payload carries the item's payload and the Lifecycle that owns it.
-Lifecycle runs the alarm loop, the retries, and the physical alarm
-(``.design/scheduling_queue_tasks_api.md``).
+Queue owns no storage: each pushed item becomes a Lifecycle job due
+immediately, whose ``fn`` is the callback name and whose payload carries the
+item's payload and the Lifecycle that owns it. Lifecycle runs the alarm loop,
+the retries, and the physical alarm (``.design/scheduling_queue_tasks_api.md``).
 """
 
 import logging
@@ -12,7 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any, cast, override
 
-from ..core.methods import get_bound_method, method_name
+from ..core.methods import method_name, resolve_callback
 from ..core.platform_errors import is_code_update_reset, is_platform_failure
 from ..core.retry import run_with_retries, validate_retry_options
 from ..core.timing import epoch_ms, from_epoch_ms, now_ms
@@ -89,8 +88,6 @@ class Queue(LifecycleCapability):
         # The last due time handed out. The driver runs due jobs in time
         # order, so strictly increasing times keep push order within one ms.
         self._last_time_ms: int | None = None
-
-    # Queue API
 
     async def push(
         self,
@@ -199,8 +196,6 @@ class Queue(LifecycleCapability):
             )
         return await self._cancel_all_for_owner(None, name)
 
-    # Lifecycle capability hooks
-
     @override
     async def on_start(self) -> None:
         """Record the storage version once (``.design/sql_schemas.md`` §4)."""
@@ -229,11 +224,8 @@ class Queue(LifecycleCapability):
                 },
             )
 
-        owner_path = envelope["owner_path"]
-        if owner_path is not None:
-            owner = RouteAddress(
-                key=envelope["owner_path_key"] or owner_path, data=owner_path
-            )
+        owner = _owner(envelope)
+        if owner is not None:
             return await self._dispatch_to_owner(owner, item)
 
         handler = self._resolve(job.fn)
@@ -284,7 +276,6 @@ class Queue(LifecycleCapability):
                 return True
         raise ValueError(f"Unknown routed Queue message {message!r}")
 
-    # Dispatch
     async def _dispatch_to_owner(
         self, owner: RouteAddress, item: QueueItem
     ) -> JobOutcome:
@@ -312,11 +303,6 @@ class Queue(LifecycleCapability):
         return None
 
     async def _run_routed(self, item: QueueItem) -> None:
-        """Run a routed item here, in its owning facet, with its own retries.
-
-        Platform failures re-raise, so the root keeps the item and its alarm
-        retries it in a fresh invocation.
-        """
         handler = self._resolve(item.callback)
         if handler is None:
             _log.error(
@@ -331,6 +317,8 @@ class Queue(LifecycleCapability):
                 should_retry=_retry_in_process,
             )
         except Exception as error:
+            # Re-raise so the root keeps the item and its alarm retries it in a
+            # fresh invocation.
             if is_platform_failure(error):
                 raise
             await self._report_failure(
@@ -376,8 +364,6 @@ class Queue(LifecycleCapability):
             # The observer failing must not fail the queue (upstream swallows).
             _log.exception("Queue on_error handler failed")
 
-    # Storage
-
     async def _insert(
         self,
         owner: RouteAddress | None,
@@ -410,7 +396,6 @@ class Queue(LifecycleCapability):
         return _item(job, envelope)
 
     def _next_time_ms(self) -> int:
-        """Return the next strictly increasing due time, never before now."""
         if self._last_time_ms is None:
             # Seed from the stored tail, so a fresh instance never sorts a new
             # item ahead of ones an earlier instance queued.
@@ -422,13 +407,11 @@ class Queue(LifecycleCapability):
         return time
 
     def _owned_jobs(self) -> Sequence[tuple[LifecycleJob, QueueJobPayload]]:
-        """Return every queue job with a valid envelope, in push order."""
-        owned = []
-        for job in self.lifecycle.jobs.list():
-            envelope = _envelope(job)
-            if envelope is not None:
-                owned.append((job, envelope))
-        return owned
+        return [
+            (job, envelope)
+            for job in self.lifecycle.jobs.list()
+            if (envelope := _envelope(job)) is not None
+        ]
 
     def _get_for_owner(self, owner: RouteAddress | None, id: str) -> QueueItem | None:
         job = self.lifecycle.jobs.get(_job_id(owner, id))
@@ -464,20 +447,14 @@ class Queue(LifecycleCapability):
                 cancelled += 1
         return cancelled
 
+    # The host calls this when it deletes a facet and the facets under it.
     async def _cleanup_route_prefix(self, prefix: str) -> None:
-        """Remove the items owned by one routed Lifecycle subtree (internal).
-
-        Called when a facet (and the facets under it) is deleted.
-        """
         for job, envelope in self._owned_jobs():
-            owner_path = envelope["owner_path"]
-            if owner_path is None:
-                continue
-            key = envelope["owner_path_key"] or owner_path
-            if key == prefix or key.startswith(f"{prefix}/"):
+            owner = _owner(envelope)
+            if owner is not None and (
+                owner.key == prefix or owner.key.startswith(f"{prefix}/")
+            ):
                 await self.lifecycle.jobs.cancel(job.id)
-
-    # Callbacks
 
     def _callback_name(self, callback: str | Callable[..., Any]) -> str:
         if isinstance(callback, str):
@@ -490,14 +467,7 @@ class Queue(LifecycleCapability):
         return method_name(self._target, callback)
 
     def _resolve(self, name: str) -> QueueCallback | None:
-        """Return the callback registered as ``name`` (the dict, then ``target``)."""
-        handler = self._callbacks.get(name)
-        if handler is not None or self._target is None:
-            return handler
-        try:
-            return get_bound_method(self._target, name)
-        except (AttributeError, TypeError):
-            return None
+        return resolve_callback(self._callbacks, self._target, name)
 
     def _retry_for(self, item: QueueItem) -> RetryOptions:
         return item.retry or self._retry
@@ -507,17 +477,20 @@ def _owner_key(owner: RouteAddress | None) -> str | None:
     return owner.key if owner is not None else None
 
 
-def _job_id(owner: RouteAddress | None, id: str) -> str:
-    """Return the stored job id for an owner's item id.
+def _owner(envelope: QueueJobPayload) -> RouteAddress | None:
+    owner_path = envelope["owner_path"]
+    if owner_path is None:
+        return None
+    return RouteAddress(key=envelope["owner_path_key"] or owner_path, data=owner_path)
 
-    Facet items share the root's job table, so their ids carry the owner key
-    (which URL-encodes ``#``); root ids stay bare, as stored before scoping.
-    """
+
+# Facet items share the root's job table, so their ids carry the owner key
+# (which URL-encodes ``#``). Root ids stay bare, as stored before scoping.
+def _job_id(owner: RouteAddress | None, id: str) -> str:
     return id if owner is None else f"{owner.key}#{id}"
 
 
 def _envelope(job: LifecycleJob) -> QueueJobPayload | None:
-    """Return the queue envelope a job carries, or ``None`` if it's malformed."""
     raw = job.payload
     if not isinstance(raw, dict) or "owner_path" not in raw:
         return None

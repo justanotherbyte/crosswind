@@ -1,15 +1,13 @@
 import ast
 import csv
-import io
-import re
 import shutil
 import sys
-import tokenize
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+
+from .strip import metadata_headers, strip
 
 __all__ = ("Kind", "ShakePlan", "shake")
 
@@ -50,9 +48,6 @@ RUNTIME_MODULES = {
     "_cloudflare_compat_flags",
 }
 
-# PEP 263's encoding declaration, which must survive comment stripping.
-CODING = re.compile(r"^[ \t\f]*#.*?coding[:=]")
-
 
 class Kind(Enum):
     MODULE = "module"
@@ -60,16 +55,6 @@ class Kind(Enum):
     STAR_IMPORT = "star import"
     COMPUTED_PREFIX = "computed prefix"
     WHOLE_PACKAGE = "whole package"
-
-
-class Cut(NamedTuple):
-    """A span of source to replace, with columns counted in characters."""
-
-    row: int
-    column: int
-    end_row: int
-    end_column: int
-    replacement: str
 
 
 @dataclass(frozen=True)
@@ -358,66 +343,6 @@ def keep_metadata(dist_info: Path, kept: dict[str, str]) -> tuple[bool, str]:
     return False, f"metadata of {dist}, which keeps no file"
 
 
-def strip(source: bytes, docstrings: bool) -> bytes:
-    """A module's source with comments, and docstrings if asked, blanked out
-    without moving any line. Source that won't parse comes back unchanged."""
-    try:
-        encoding, _ = tokenize.detect_encoding(io.BytesIO(source).readline)
-        # Lines as Python counts them. str.splitlines also splits at form feeds
-        # and other characters that don't end a line, which shifts every cut.
-        lines = io.StringIO(source.decode(encoding), newline=None).readlines()
-        text = "".join(lines)
-        tree = ast.parse(text)
-        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    except (SyntaxError, ValueError, UnicodeDecodeError, tokenize.TokenError):
-        return source
-
-    cuts = [
-        Cut(*token.start, *token.end, "")
-        for token in tokens
-        if token.type == tokenize.COMMENT
-        and not (token.start[0] <= 2 and CODING.match(token.line))
-    ]
-    for node in ast.walk(tree) if docstrings else []:
-        if not isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-        ):
-            continue
-        first = node.body[0] if node.body else None
-        if not (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            continue
-        assert first.end_lineno is not None and first.end_col_offset is not None
-        # ast counts columns in UTF-8 bytes.
-        start = len(lines[first.lineno - 1].encode()[: first.col_offset].decode())
-        end = len(lines[first.end_lineno - 1].encode()[: first.end_col_offset].decode())
-        # A body needs a statement. A module doesn't, and `pass` would come
-        # before its `from __future__` imports.
-        sole = len(node.body) == 1 and not isinstance(node, ast.Module)
-        replacement = "pass" if sole else ""
-        cuts.append(Cut(first.lineno, start, first.end_lineno, end, replacement))
-
-    for row, column, end_row, end_column, replacement in sorted(cuts, reverse=True):
-        head, tail = lines[row - 1][:column], lines[end_row - 1][end_column:]
-        lines[row - 1 : end_row] = [head + replacement + "\n" * (end_row - row) + tail]
-
-    stripped = "".join(lines)
-    try:
-        ast.parse(stripped)
-    except SyntaxError:
-        return source
-    return stripped.encode(encoding)
-
-
-def metadata_headers(metadata: bytes) -> bytes:
-    """A METADATA file without its description, the body after the headers."""
-    headers, blank, _ = metadata.partition(b"\n\n")
-    return headers + b"\n" if blank else metadata
-
-
 def absent_import(tree: ast.Module, roots: tuple[Path, ...]) -> str | None:
     """A package that an unconditional top-level import names and that no root,
     the stdlib or the runtime has, so importing the module always fails."""
@@ -470,40 +395,33 @@ def lazy_table(tree: ast.Module, package: str) -> dict[str, str]:
             continue
         for key, value in zip(node.value.keys, node.value.values, strict=True):
             pair = value.elts if isinstance(value, ast.Tuple) else []
-            module = pair[1] if len(pair) == 2 else None
-            if not (
-                isinstance(key, ast.Constant)
-                and isinstance(key.value, str)
-                and isinstance(module, ast.Constant)
-                and isinstance(module.value, str)
-            ):
+            attribute = string(key)
+            module = string(pair[1]) if len(pair) == 2 else None
+            if attribute is None or module is None:
                 continue
             # A literal package, as in ('pydantic_core', '.core_schema'), is
             # another one. Anything else, like __spec__.parent, is this one.
-            first = pair[0]
-            literal = isinstance(first, ast.Constant) and isinstance(first.value, str)
-            owner = first.value if literal else package
-            if module.value == "__module__":
-                table[key.value] = f"{owner}.{key.value}"
+            owner = string(pair[0])
+            owner = package if owner is None else owner
+            if module == "__module__":
+                table[attribute] = f"{owner}.{attribute}"
                 continue
-            level = len(module.value) - len(module.value.lstrip("."))
-            base = resolve_relative(module.value[level:], level, owner)
+            base = resolve_dotted(module, owner)
             if base:
-                table[key.value] = base
+                table[attribute] = base
 
     return table
 
 
 def parse(path: Path) -> ast.Module:
     """A module's syntax tree, empty for an extension or code that won't compile."""
-    if path.suffix != ".py":
-        return ast.Module(body=[], type_ignores=[])
-
-    try:
-        return ast.parse(path.read_bytes())
-    except (SyntaxError, ValueError):
-        # Python raises the same error at import, which the importer may catch.
-        return ast.Module(body=[], type_ignores=[])
+    if path.suffix == ".py":
+        try:
+            return ast.parse(path.read_bytes())
+        except (SyntaxError, ValueError):
+            # Python raises the same error at import, which the importer may catch.
+            pass
+    return ast.Module(body=[], type_ignores=[])
 
 
 def find(name: str, roots: tuple[Path, ...]) -> Path | None:
@@ -588,9 +506,8 @@ def from_import(node: ast.ImportFrom, package: str) -> list[tuple[str, str, Kind
 
 def computed_import(argument: ast.expr, package: str) -> list[tuple[str, str, Kind]]:
     """The modules an import_module or __import__ argument can name."""
-    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
-        level = len(argument.value) - len(argument.value.lstrip("."))
-        base = resolve_relative(argument.value[level:], level, package)
+    if (name := string(argument)) is not None:
+        base = resolve_dotted(name, package)
         return [(base, "", Kind.MODULE)] if base else []
 
     # f"pkg._backends._{name}" or "pkg." + name can name any module that the
@@ -608,15 +525,13 @@ def computed_import(argument: ast.expr, package: str) -> list[tuple[str, str, Ki
 def literal_start(argument: ast.expr) -> str:
     """The literal text a computed string starts with, or ""."""
     if isinstance(argument, ast.JoinedStr) and argument.values:
-        first = argument.values[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            return first.value
+        first = string(argument.values[0])
+        if first is not None:
+            return first
 
     if isinstance(argument, ast.BinOp) and isinstance(argument.op, ast.Add):
-        left = argument.left
-        if isinstance(left, ast.Constant) and isinstance(left.value, str):
-            return left.value
-        return literal_start(left)
+        left = string(argument.left)
+        return literal_start(argument.left) if left is None else left
 
     return ""
 
@@ -646,9 +561,22 @@ def _all(tree: ast.Module) -> list[str]:
             and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets)
             and isinstance(node.value, (ast.List, ast.Tuple))
         ):
-            names = [e.value for e in node.value.elts if isinstance(e, ast.Constant)]
-            return [name for name in names if isinstance(name, str)]
+            names = [string(element) for element in node.value.elts]
+            return [name for name in names if name is not None]
     return []
+
+
+def string(node: ast.AST | None) -> str | None:
+    """The value of a string literal, or None for any other node."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def resolve_dotted(name: str, package: str) -> str | None:
+    """resolve_relative for a name that spells its level as leading dots."""
+    module = name.lstrip(".")
+    return resolve_relative(module, len(name) - len(module), package)
 
 
 def resolve_relative(module: str, level: int, package: str) -> str | None:

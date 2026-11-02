@@ -1,4 +1,4 @@
-"""The auth context a request's tools can read (upstream ``auth-context.ts``)."""
+"""Port of upstream ``auth-context.ts``."""
 
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -27,8 +27,7 @@ def get_mcp_auth_context() -> McpAuthContext | None:
 
 
 @contextmanager
-def auth_context(context: McpAuthContext | None) -> Generator[None]:
-    """Set the auth context for tasks started inside the block."""
+def use_auth_context(context: McpAuthContext | None) -> Generator[None]:
     token = _current.set(context)
     try:
         yield

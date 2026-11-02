@@ -8,6 +8,7 @@ from .project import load_project
 from .sources import PythonConfigParser, WranglerConfigParser
 from .targets import TARGETS
 from .typegen import write_env
+from .utils import read_text
 
 __all__ = ("scaffold",)
 
@@ -101,7 +102,7 @@ def scaffold(
 
 def ignore(path: Path) -> None:
     """Add the ignore lines a .gitignore lacks, keeping what it has."""
-    text = path.read_text() if path.is_file() else ""
+    text = read_text(path) or ""
     missing = [line for line in IGNORED if line not in text.splitlines()]
     if not missing:
         return

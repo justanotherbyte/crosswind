@@ -1,4 +1,4 @@
-"""The Lifecycle substrate and the capability model (upstream ``lifecycle/``)."""
+"""Upstream ``lifecycle/``."""
 
 from .capability import LifecycleCapability
 from .job_queue import LifecycleJobs

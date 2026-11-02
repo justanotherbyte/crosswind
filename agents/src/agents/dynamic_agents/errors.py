@@ -1,5 +1,3 @@
-"""Exceptions for sub-agents."""
-
 from ..core.errors import AgentsException
 
 __all__ = (
@@ -17,8 +15,8 @@ class SubAgentAbortedError(AgentsException):
 
 
 class InvalidSubAgentNameError(ValueError):
-    """A sub-agent name can't be used (it contains NUL)."""
+    pass
 
 
 class UnknownSubAgentClassError(ValueError):
-    """A sub-agent class isn't exported from the Worker under that name."""
+    pass

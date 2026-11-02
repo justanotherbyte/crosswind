@@ -1,4 +1,4 @@
-"""Durable background work (upstream ``queue/``)."""
+"""Port of upstream ``queue/``."""
 
 from .queue import Queue
 from .types import QueueItem

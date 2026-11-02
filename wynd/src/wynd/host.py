@@ -3,17 +3,14 @@ import re
 from .console import warn
 from .project import Project
 from .targets import Target
+from .utils import read_text
 
 __all__ = ("warn_on_venv_mismatch",)
 
 
 def warn_on_venv_mismatch(project: Project, target: Target) -> None:
     """Warn when the editor's .venv runs another Python minor than the target."""
-    try:
-        pyvenv = (project.root / ".venv" / "pyvenv.cfg").read_text()
-    except FileNotFoundError:
-        return
-
+    pyvenv = read_text(project.root / ".venv" / "pyvenv.cfg") or ""
     match = re.search(r"^version_info\s*=\s*(\d+\.\d+)", pyvenv, re.MULTILINE)
     if match is None or match.group(1) == target.version:
         return

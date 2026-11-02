@@ -239,19 +239,17 @@ def run_wrangler(flow: str) -> int:
         setting(name)
         for name in ("compatibility_date", "compatibility_flags", "latest")
     ):
-        error(
+        raise WyndError(
             "--compatibility-date, --compatibility-flags and --latest change the "
             "Python version after Wynd installs packages. Set compatibility_date "
             "and compatibility_flags in the Wrangler config."
         )
-        return 1
     if flow == "dev" and dev_remote(args):
-        error(
+        raise WyndError(
             "wynd dev --remote is not supported for Python Workers. Use remote "
             "bindings instead: "
             "https://developers.cloudflare.com/workers/development-testing/#remote-bindings"
         )
-        return 1
 
     try:
         project = load_selected_project()

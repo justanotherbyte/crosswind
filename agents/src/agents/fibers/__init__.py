@@ -1,5 +1,3 @@
-"""Fibers, managed fibers, and keep-alive (upstream "legacy fibers")."""
-
 from .errors import FiberConflictError, FiberNotFoundError
 from .fibers import Fibers
 from .keep_alive import KeepAlive

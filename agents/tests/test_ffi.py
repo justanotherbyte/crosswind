@@ -26,7 +26,7 @@ sys.modules["pyodide.ffi"] = ffi
 spec = importlib.util.spec_from_file_location("agents._ffi", {str(FFI)!r})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-print(module._prepare(None), module.js_to_py(None))
+print(module._prepare_for_to_js(None), module.js_to_py(None))
 """
 
 

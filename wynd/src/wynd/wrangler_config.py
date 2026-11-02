@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import WyndError
+from .utils import read_text
 
 __all__ = ("JSON", "BindingRef", "WranglerConfig")
 
@@ -103,7 +104,7 @@ class WranglerConfig:
 
     @cached_property
     def main(self) -> Path:
-        """Path: the entrypoint, absolute. WyndError when the config sets none."""
+        """The absolute entrypoint. WyndError when the config sets none."""
         main = self.settings.get("main")
         if not isinstance(main, str):
             raise WyndError(f"{self.source.name} sets no main")
@@ -111,7 +112,7 @@ class WranglerConfig:
 
     @cached_property
     def source_dir(self) -> Path:
-        """Path: the module root, base_dir or the entrypoint's directory."""
+        """The module root, base_dir or the entrypoint's directory."""
         base_dir = self.settings.get("base_dir")
         if not base_dir:
             return self.main.parent
@@ -119,7 +120,7 @@ class WranglerConfig:
 
     @cached_property
     def entry_module(self) -> str:
-        """str: the entry module's dotted name below source_dir."""
+        """The entry module's dotted name below source_dir."""
         try:
             entry = self.main.relative_to(self.source_dir)
         except ValueError:
@@ -130,7 +131,7 @@ class WranglerConfig:
 
     @cached_property
     def compatibility_date(self) -> str | None:
-        """str | None: the date as text. TOML parses a bare date as a date."""
+        """The date as text. TOML parses a bare date as a date."""
         day = self.settings.get("compatibility_date")
         return None if day is None else str(day)
 
@@ -140,7 +141,7 @@ class WranglerConfig:
 
     @cached_property
     def bindings(self) -> tuple[BindingRef, ...]:
-        """tuple[BindingRef, ...]: every binding, in config order."""
+        """Every binding, in config order."""
         return tuple(binding_refs(self.settings))
 
     @cached_property
@@ -248,18 +249,14 @@ def rewrite(section: dict[str, Any], base: Path) -> None:
             if isinstance(target, str) and target.startswith("."):
                 aliases[name] = str(base / target)
 
-    envs = section.get("env")
-    nested = list(envs.values()) if isinstance(envs, dict) else []
-    for table in tables(nested) + tables(section.get("previews")):
+    for table in env_tables(section) + tables(section.get("previews")):
         rewrite(table, base)
 
 
 def point_into(payload: dict[str, Any], code_root: Path, directory: Path) -> None:
     """Point main and base_dir, at the top level and in every env, into
     `code_root`, relative to the staged file's `directory`."""
-    envs = payload.get("env")
-    nested = list(envs.values()) if isinstance(envs, dict) else []
-    for section in [payload, *tables(nested)]:
+    for section in [payload, *env_tables(payload)]:
         for key in ("main", "base_dir"):
             if isinstance(section.get(key), str):
                 section[key] = os.path.relpath(code_root / section[key], directory)
@@ -268,6 +265,11 @@ def point_into(payload: dict[str, Any], code_root: Path, directory: Path) -> Non
 def tables(value: Any) -> list[dict[str, Any]]:
     items = value if isinstance(value, list) else [value]
     return [item for item in items if isinstance(item, dict)]
+
+
+def env_tables(section: dict[str, Any]) -> list[dict[str, Any]]:
+    envs = section.get("env")
+    return tables(list(envs.values())) if isinstance(envs, dict) else []
 
 
 def absolute(value: Any, base: Path) -> Any:
@@ -296,7 +298,7 @@ def toml_value(value: Any) -> str:
 
 
 def replace(path: Path, text: str) -> None:
-    if path.is_file() and path.read_text() == text:
+    if read_text(path) == text:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.tmp")

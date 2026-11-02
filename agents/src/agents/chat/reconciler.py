@@ -1,23 +1,15 @@
-"""Aligning client-sent messages with stored ones.
-
-Port of upstream ``chat/message-reconciler.ts``.
+"""Upstream ``chat/message-reconciler.ts``.
 
 A client submits its whole transcript, and its copies of assistant messages
 can be stale: built under a temporary id, or still showing a tool call the
-server has since settled. Before saving, three passes run in order:
-
-1. give an incoming assistant message its stored id (exact id, then the same
-   tool calls, then the same content);
-2. merge server-known tool outputs into incoming copies still pending;
-3. drop stale duplicate assistant copies echoed in the same submit.
-
-Works on wire-form dictionaries; inputs aren't mutated.
+server has since settled. Inputs aren't mutated.
 """
 
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from ._json import dumps, stable_dumps
+from .tool_state import SETTLED_TOOL_STATES
 
 __all__ = (
     "assistant_content_key",
@@ -30,7 +22,11 @@ type Message = dict[str, Any]
 type Part = dict[str, Any]
 type Sanitize = Callable[[Message], Message]
 
-_RESOLVED = ("output-available", "output-error", "output-denied")
+_RESULT_FIELDS = {
+    "output-available": "output",
+    "output-error": "errorText",
+    "output-denied": "approval",
+}
 _PENDING = ("input-available", "approval-requested", "approval-responded")
 
 
@@ -39,7 +35,6 @@ def reconcile_messages(
     server_messages: Sequence[Message],
     sanitize_for_content_key: Sanitize | None = None,
 ) -> list[Message]:
-    """Return ``incoming`` aligned with ``server_messages`` (the three passes)."""
     with_ids = _reconcile_assistant_ids(
         incoming, server_messages, sanitize_for_content_key
     )
@@ -50,7 +45,6 @@ def reconcile_messages(
 def resolve_tool_merge_id(
     message: Message, server_messages: Sequence[Message]
 ) -> Message:
-    """Give an assistant message the id of the stored message sharing a tool call."""
     if message.get("role") != "assistant":
         return message
     for part in message["parts"]:
@@ -63,7 +57,6 @@ def resolve_tool_merge_id(
 
 
 def reconcile_orphan_partial(existing: Message, incoming: Message) -> Message:
-    """Merge a rebuilt partial into the stored message, keeping existing tool calls."""
     existing_ids = {p["toolCallId"] for p in existing["parts"] if "toolCallId" in p}
     new_parts = [
         p
@@ -83,7 +76,6 @@ def reconcile_orphan_partial(existing: Message, incoming: Message) -> Message:
 def assistant_content_key(
     message: Message, sanitize: Sanitize | None = None
 ) -> str | None:
-    """Return the JSON of an assistant message's parts (``None`` for others)."""
     if message.get("role") != "assistant":
         return None
     sanitized = sanitize(message) if sanitize is not None else message
@@ -163,12 +155,9 @@ def _merge_server_tool_outputs(
                 continue
             changed = True
             merged = {**part, "state": server["state"]}
-            if server["state"] == "output-available" and "output" in server:
-                merged["output"] = server["output"]
-            elif server["state"] == "output-error" and "errorText" in server:
-                merged["errorText"] = server["errorText"]
-            elif server["state"] == "output-denied" and "approval" in server:
-                merged["approval"] = server["approval"]
+            result_field = _RESULT_FIELDS[server["state"]]
+            if result_field in server:
+                merged[result_field] = server[result_field]
             parts.append(merged)
         return {**message, "parts": parts} if changed else message
 
@@ -228,7 +217,7 @@ def _has_tool_call(message: Message) -> bool:
 
 
 def _is_resolved(part: Part) -> bool:
-    return "toolCallId" in part and part.get("state") in _RESOLVED
+    return "toolCallId" in part and part.get("state") in SETTLED_TOOL_STATES
 
 
 def _is_pending(part: Part) -> bool:

@@ -1,7 +1,5 @@
-"""Exceptions raised by the MCP client and server handler.
+"""``MCPNotEnabledError`` lives in ``agents.agent.errors`` instead of here.
 
-Every one subclasses `MCPError`, so ``except MCPError`` catches them all.
-``MCPNotEnabledError`` lives in ``agents.agent.errors`` instead, because
 ``Agent`` raises it without importing this package.
 """
 

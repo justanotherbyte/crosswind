@@ -1,12 +1,12 @@
-"""Cron expressions: parsing and the next matching time.
+"""Port of the npm package ``cron-schedule`` 6.0 (MIT).
 
-Port of the npm package ``cron-schedule`` 6.0 (MIT), which upstream uses
-(``parseCronExpression(...).getNextDate(...)``), so expressions mean the same
-in both SDKs. Linux cron syntax plus an optional leading seconds field: lists,
-ranges, steps, month and weekday names, weekday ``7`` as Sunday, and the
-``@yearly`` / ``@monthly`` / ``@weekly`` / ``@daily`` / ``@hourly`` /
-``@minutely`` nicknames. When both day of month and weekday are restricted, a
-day matching either counts. Times are UTC (the Workers runtime's local time).
+Upstream uses it (``parseCronExpression(...).getNextDate(...)``), so
+expressions mean the same in both SDKs. Linux cron syntax plus an optional
+leading seconds field: lists, ranges, steps, month and weekday names, weekday
+``7`` as Sunday, and the ``@yearly`` / ``@monthly`` / ``@weekly`` /
+``@daily`` / ``@hourly`` / ``@minutely`` nicknames. When both day of month and
+weekday are restricted, a day matching either counts. Times are UTC (the
+Workers runtime's local time).
 """
 
 import calendar
@@ -72,11 +72,6 @@ _RANGE = re.compile(r"^(([0-9a-zA-Z]+)-([0-9a-zA-Z]+)|\*)(/([0-9]+))?$")
 
 
 class CronExpression:
-    """A parsed cron expression; `next_after` finds the next matching time.
-
-    Use `parse_cron` to create one.
-    """
-
     __slots__ = ("_days", "_hours", "_minutes", "_months", "_seconds", "_weekdays")
 
     def __init__(
@@ -97,15 +92,6 @@ class CronExpression:
         self._weekdays = sorted(weekdays)  # 0-6, Sunday = 0
 
     def next_after(self, start: datetime) -> datetime:
-        """Return the first matching time strictly after ``start`` (whole seconds).
-
-        Raises
-        ------
-        TypeError
-            If ``start`` is naive.
-        InvalidCronExpressionError
-            If nothing matches within five years (e.g. ``0 0 30 2 *``).
-        """
         if start.tzinfo is None:
             raise TypeError("next_after() needs a timezone-aware datetime")
         start = start.astimezone(UTC)
@@ -122,15 +108,15 @@ class CronExpression:
             candidate_year = year + (start_index + offset) // count
             month = self._months[(start_index + offset) % count]
             is_start_month = candidate_year == start.year and month == start.month
-            day = self._allowed_day(
+            day = self._first_matching_day(
                 candidate_year, month, start.day if is_start_month else 1
             )
             is_start_day = is_start_month and day == start.day
             if day is not None and is_start_day:
-                time = self._allowed_time(start.hour, start.minute, start.second)
+                time = self._next_time_that_day(start.hour, start.minute, start.second)
                 if time is not None:
                     return datetime(candidate_year, month, day, *time, tzinfo=UTC)
-                day = self._allowed_day(candidate_year, month, day + 1)
+                day = self._first_matching_day(candidate_year, month, day + 1)
                 is_start_day = False
             if day is not None and not is_start_day:
                 return datetime(
@@ -144,10 +130,9 @@ class CronExpression:
                 )
         raise InvalidCronExpressionError("No matching time within five years")
 
-    def _allowed_time(
+    def _next_time_that_day(
         self, hour: int, minute: int, second: int
     ) -> tuple[int, int, int] | None:
-        """Return the first allowed time after ``hour:minute:second`` that day."""
         next_hour = _first_at_least(self._hours, hour)
         if next_hour is None:
             return None
@@ -166,8 +151,7 @@ class CronExpression:
             return next_hour, self._minutes[0], self._seconds[0]
         return None
 
-    def _allowed_day(self, year: int, month: int, start_day: int) -> int | None:
-        """Return the first day from ``start_day`` matching the day or weekday."""
+    def _first_matching_day(self, year: int, month: int, start_day: int) -> int | None:
         days_in_month = calendar.monthrange(year, month)[1]
         days_restricted = len(self._days) != 31
         weekdays_restricted = len(self._weekdays) != 7
@@ -197,13 +181,6 @@ class CronExpression:
 
 
 def parse_cron(expression: str) -> CronExpression:
-    """Parse a cron expression (5 fields, or 6 with seconds first).
-
-    Raises
-    ------
-    InvalidCronExpressionError
-        If the expression isn't valid cron.
-    """
     expression = _NICKNAMES.get(expression.lower(), expression)
     fields = expression.split()
     if len(fields) not in (5, 6):

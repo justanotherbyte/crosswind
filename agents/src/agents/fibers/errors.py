@@ -1,5 +1,3 @@
-"""Errors raised by the fiber API."""
-
 from ..core.errors import AgentsException
 
 __all__ = ("FiberConflictError", "FiberNotFoundError")

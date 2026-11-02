@@ -1,17 +1,12 @@
-"""Splitting message JSON across rows (upstream ``sessions/chunking.ts``)."""
+"""Port of upstream ``sessions/chunking.ts``."""
 
 __all__ = ("MAX_INLINE_ROW_BYTES", "split_content")
 
+# Stays under the 2 MiB row limit.
 MAX_INLINE_ROW_BYTES = 1536 * 1024
-"""UTF-8 bytes of message JSON per row (under the 2 MiB row limit)."""
 
 
 def split_content(text: str, budget: int = MAX_INLINE_ROW_BYTES) -> list[str]:
-    """Cut ``text`` into slices of at most ``budget`` UTF-8 bytes.
-
-    Cuts fall between characters, so ``"".join(slices) == text``. A single
-    character wider than the budget gets a slice of its own.
-    """
     data = text.encode("utf-8", "surrogatepass")
     if len(data) <= budget:
         return [text]
