@@ -1,15 +1,38 @@
 ---
-title: "Cloudflare Agents SDK for Python Workers"
+title: "Cloudflare Agents for Python Workers"
 description: "What cf-agents does, how an Agent maps to a Durable Object, which parts of the TypeScript Agents SDK it ports, and what isn't ported yet."
 ---
 
-`cf-agents` is a Python port of the
-[Cloudflare Agents SDK](https://developers.cloudflare.com/agents/). An agent
-is a Python class that keeps state, talks to browsers over WebSockets, runs
-scheduled and background work, and can stream chat replies from a model.
+Write stateful, durable Agents in Python, deployed on Cloudflare. Orchestrate WebSockets, run scheduled and background work and stream LLM model responses.
+
+!!! note
+    This is a port of the official [Agents SDK](https://agents.cloudflare.com). Crosswind still aims to ship a harness similar to Project Think. If you'd like to help with this, please do contribute!
+
+## Installation
+
+!!! note
+    Python 3.12+ is required.
+
+Run the following in your terminal:
+```sh
+uv add cf-agents
+```
+
+If you'd like support for MCP servers (Python 3.14+) run the following:
+```sh
+uv add cf-agents[mcp-server]
+```
+
+## Getting Started
+
+Spinning up your first agent is super easy. The example below explores some basics. You might be thinking, "where are my LLM calls?"
+
+They'll come soon, it's important to understand agent state and a request's lifecycle first.
+
 
 ```python
-from agents import Agent, callable
+from agents import Agent, callable, route_agent_request
+from workers import WorkerEntrypoint, Request, Response
 
 
 class Counter(Agent):
@@ -19,10 +42,22 @@ class Counter(Agent):
     async def increment(self, by: int = 1) -> int:
         self.set_state({"count": self.state["count"] + by})
         return self.state["count"]
+
+class Default(WorkerEntrypoint):
+  async def fetch(self, request: Request) -> Response:
+    return await route_agent_request(request, self.env)
 ```
 
-A browser connected with the `useAgent` React hook can call
-`agent.stub.increment(1)`. Every connected client then receives the new state.
+A browser connected with the `useAgent` React hook can call `agent.stub.increment(1)`. Every connected client then receives the new state.
+
+```typescript
+import { useAgent } from "agents/react";
+
+function Counter() {
+  const agent = useAgent({ agent: "Counter" });
+
+}
+```
 
 ## How it works
 
@@ -37,7 +72,7 @@ A request reaches an agent in three steps:
 1. A browser opens a WebSocket with `useAgent`, or `curl` or `fetch` sends an
    HTTP request, to your Worker.
 2. The Worker calls `route_agent_request`, which forwards the request to the
-   Durable Object with that name, such as `room-7`.
+   Durable Object with that name, such as `counter`.
 3. The Durable Object runs your `Agent` subclass. It holds the state it syncs
    to clients, its SQLite database (`self.sql(...)`), its schedules and queue,
    and its durable tasks.
@@ -52,17 +87,6 @@ while the agent hibernates. The next message, request or alarm wakes it and
 calls `on_start()` again, so keep anything you need between events in state
 or SQL, not in instance attributes.
 
-## Works with the JavaScript clients
-
-`cf-agents` speaks the same WebSocket protocol as the TypeScript SDK. The
-browser packages connect to a Python agent unchanged:
-
-- `useAgent` and `AgentClient` from the
-  [`agents`](https://www.npmjs.com/package/agents) npm package, for state and
-  `@callable` methods.
-- `useAgentChat` from
-  [`@cloudflare/ai-chat`](https://www.npmjs.com/package/@cloudflare/ai-chat),
-  for chat agents.
 
 ## What the SDK covers
 
@@ -83,23 +107,11 @@ like in `on_chat_message` and yield text or typed chunks.
 
 ## Not ported yet
 
-- MCP clients and servers.
 - Chat client tools, tool approvals and automatic recovery of interrupted chat
   turns.
 - Voice, email, workflows, channels and browser automation.
 - The experimental Cap'n Web transport.
 - Tracing. Structured events are ported.
-
-## Install
-
-Add the package to a Python Worker project:
-
-```sh
-uv add cf-agents
-```
-
-It needs Python 3.12 or later. To create a project first, follow
-[Getting started](getting-started.md).
 
 ## Status
 
