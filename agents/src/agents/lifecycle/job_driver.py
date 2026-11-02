@@ -1,17 +1,13 @@
-"""The alarm event loop that drives the job queue.
+"""Port of upstream ``lifecycle/job-driver.ts``.
 
-Port of upstream ``lifecycle/job-driver.ts``. When the physical alarm fires
-the driver: arms a deadman alarm, drives due jobs in due order (single-flight
-skip and hung recovery, per-job retries, platform-failure deferral, terminal
-failure hooks), runs the host's alarm hook, and re-arms the alarm, all inside
-the alarm memory-limit circuit breaker (upstream #1825).
+The memory-limit circuit breaker is upstream #1825.
 """
 
 import asyncio
 import logging
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from contextvars import ContextVar
-from datetime import datetime
 from functools import partial
 from typing import Any
 
@@ -43,7 +39,6 @@ _log = logging.getLogger("agents.lifecycle")
 
 DEFAULT_MAX_ALARM_MEMORY_LIMIT_STRIKES = 3
 _OOM_ALARM_STRIKES_KEY = "cf_agents:oom_alarm_strikes"
-_DEFAULT_JOB_RETRY = RetryOptions(max_attempts=3, base_delay=0.1, max_delay=3.0)
 _JOB_BACKLOG_WARNING_THRESHOLD = 10
 # Armed before driving jobs, so an isolate death mid-drive still wakes the
 # object to resume its queue; the final re-arm overwrites it.
@@ -56,31 +51,6 @@ _alarm_scope: ContextVar[AlarmScope | None] = ContextVar(
 
 
 class JobDriver:
-    """Drives the job queue when the Durable Object's alarm fires.
-
-    Parameters
-    ----------
-    queue
-        The object's job queue.
-    storage
-        The object's ``ctx.storage`` (Workers SDK wrapper).
-    disabled
-        Returns ``True`` once the host is being destroyed; the driver then
-        stops touching storage.
-    resolve_dispatch
-        Resolves a job's owner to its dispatch hooks, or ``None``.
-    max_memory_limit_strikes
-        Consecutive memory-limit resets tolerated before sealing.
-    on_memory_limit
-        Capability and host policy applied on each strike.
-    emit
-        Best-effort lifecycle telemetry.
-    rearm
-        Recomputes the physical alarm from queue state.
-    reset
-        Schedules an isolate reset that doesn't retry the current alarm.
-    """
-
     def __init__(
         self,
         *,
@@ -92,7 +62,7 @@ class JobDriver:
         on_memory_limit: Callable[[MemoryLimitContext], Awaitable[None]],
         emit: Callable[[str, dict[str, Any]], None],
         rearm: Callable[[], Awaitable[None]],
-        reset: Callable[[str], None],
+        reset_isolate: Callable[[str], None],
     ) -> None:
         self._queue = queue
         self._storage = storage
@@ -102,7 +72,7 @@ class JobDriver:
         self._on_memory_limit = on_memory_limit
         self._emit = emit
         self._rearm = rearm
-        self._reset = reset
+        self._reset_isolate = reset_isolate
         self._alarms_in_flight = 0
         # Handed-off work still running; while non-empty a clean alarm must not
         # clear the strike counter (a handoff may yet report a reset).
@@ -119,12 +89,8 @@ class JobDriver:
         initialize: Callable[[], Awaitable[None]],
         run_host_alarm: Callable[[], Awaitable[None]],
     ) -> None:
-        """Run one alarm invocation inside the memory-limit circuit breaker.
-
-        A memory-limit reset is intercepted and handled here, where the heavy
-        work has unwound; any other error re-raises so the platform's alarm
-        retry still applies.
-        """
+        # A memory-limit reset is handled here, where the heavy work has unwound;
+        # any other error re-raises so the platform's alarm retry still applies.
         self._alarms_in_flight += 1
         clean = False
         try:
@@ -150,15 +116,6 @@ class JobDriver:
         await self._rearm()
 
     def track_alarm_work(self, work: asyncio.Future[Any]) -> bool:
-        """Keep work a job handed off inside this alarm's breaker domain.
-
-        Returns
-        -------
-        bool
-            ``True`` when called from an alarm-driven dispatch or the host's
-            alarm hook (tracking the same work again is a no-op); ``False``
-            otherwise, and nothing is tracked.
-        """
         scope = _alarm_scope.get()
         if scope is None:
             return False
@@ -212,7 +169,7 @@ class JobDriver:
             # An earlier dispatch may have pushed, rescheduled, or cancelled
             # this job; a row that is gone or no longer due belongs to that
             # newer intent.
-            row = self._queue.due_row(stale["id"], now)
+            row = self._queue.still_due(stale["id"], now)
             if row is None:
                 continue
             if row["singleflight"] == 1 and row["running"] == 1:
@@ -244,11 +201,10 @@ class JobDriver:
             self._queue.delete(row["id"])
             return
 
-        retry = job.retry or _DEFAULT_JOB_RETRY
+        retry = job.retry or RetryOptions()
         watchdog = asyncio.get_running_loop().call_later(
             hung_timeout_ms(row) / 1000, self._warn_slow_dispatch, row
         )
-        outcome: JobOutcome = None
         try:
             outcome = await _in_alarm_scope(
                 row, partial(self._dispatch_with_retries, dispatch, job, retry)
@@ -271,7 +227,7 @@ class JobDriver:
                     row["id"],
                 )
                 raise AttributedPlatformFailure(row, error) from error
-            outcome = await self._job_error_outcome(dispatch, job, retry, error)
+            outcome = await self._terminal_failure_outcome(dispatch, job, retry, error)
         finally:
             watchdog.cancel()
         if self._disabled():
@@ -286,14 +242,13 @@ class JobDriver:
 
         return await run_with_retries(attempt, retry, should_retry=_retry_in_process)
 
-    async def _job_error_outcome(
+    async def _terminal_failure_outcome(
         self,
         dispatch: JobDispatch,
         job: LifecycleJob,
         retry: RetryOptions,
         error: Exception,
     ) -> JobOutcome:
-        """Let the owner decide what a terminally failed job becomes."""
         if dispatch.on_job_error is None:
             return None
         context = JobContext(job=job, attempt=retry.max_attempts)
@@ -326,9 +281,7 @@ class JobDriver:
         )
 
     def _warn_backlog(self, due: Sequence[JobRow]) -> None:
-        counts: dict[str, int] = {}
-        for row in due:
-            counts[row["capability"]] = counts.get(row["capability"], 0) + 1
+        counts = Counter(row["capability"] for row in due)
         for owner, count in counts.items():
             if count < _JOB_BACKLOG_WARNING_THRESHOLD:
                 continue
@@ -350,16 +303,9 @@ class JobDriver:
     async def _handle_memory_limit_reset(
         self, error: BaseException, executing: JobRow | None
     ) -> None:
-        """Break the platform's alarm-retry loop after a memory-limit reset.
-
-        A durable counter tolerates a few consecutive strikes, backing off the
-        executing job and every recovery-loop job, then seals: those jobs are
-        purged. Each step is best-effort; even small writes can fail on a
-        condemned isolate, and returning still stops the platform's retry.
-        """
         first = self._strike is None
         self._strike_recorded_this_isolate = True
-        if self._strike is None:
+        if first:
             self._strike = asyncio.ensure_future(self._record_strike(error))
         strike = await asyncio.shield(self._strike)
 
@@ -368,7 +314,9 @@ class JobDriver:
             self._on_memory_limit,
             MemoryLimitContext(
                 sealed=strike.sealed,
-                next_time=_maybe_datetime(strike.next_time_ms),
+                next_time=from_epoch_ms(strike.next_time_ms)
+                if strike.next_time_ms is not None
+                else None,
                 executing=job_from_row(executing) if executing is not None else None,
                 purged_recovery_loop_jobs=strike.purged_recovery_loop_jobs
                 if first
@@ -386,7 +334,7 @@ class JobDriver:
         except Exception:
             _log.exception("Couldn't sync the memory-limit strike; not resetting")
             return
-        self._reset(
+        self._reset_isolate(
             f"Alarm memory-limit strike {strike.strikes}/{strike.limit}"
             f"{' (sealed)' if strike.sealed else ''}; resetting isolate"
         )
@@ -402,7 +350,6 @@ class JobDriver:
             self._queue.retime(row["id"], strike.next_time_ms)
 
     async def _record_strike(self, error: BaseException) -> MemoryLimitStrike:
-        """Record one strike durably and apply the queue-wide policy once."""
         strikes = 1
         try:
             prior = await self._storage.get(_OOM_ALARM_STRIKES_KEY)
@@ -421,14 +368,15 @@ class JobDriver:
             ", sealing recovery" if sealed else ", will retry with backoff",
             error,
         )
-        next_time_ms = None if sealed else now_ms() + min(300, 30 * strikes) * 1000
 
         purged: Sequence[LifecycleJob] | None = None
+        next_time_ms: int | None = None
         if sealed:
             # Snapshot before purging: policy hooks run after the rows are gone.
             purged = await _best_effort(self._snapshot_and_purge_recovery_loop)
             await _best_effort(self._storage.delete, _OOM_ALARM_STRIKES_KEY)
-        elif next_time_ms is not None:
+        else:
+            next_time_ms = now_ms() + min(300, 30 * strikes) * 1000
             await _best_effort(self._delay_recovery_loop, next_time_ms)
 
         self._emit(
@@ -482,7 +430,3 @@ async def _best_effort[T, *Args](
     except Exception:
         _log.exception("Best-effort memory-limit step failed")
         return None
-
-
-def _maybe_datetime(ms: int | None) -> datetime | None:
-    return from_epoch_ms(ms) if ms is not None else None

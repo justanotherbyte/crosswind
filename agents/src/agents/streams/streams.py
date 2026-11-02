@@ -1,12 +1,11 @@
-"""Durable incremental output: the Streams capability.
+"""Port of upstream ``streams/streams.ts``.
 
-Port of upstream ``streams/streams.ts`` (``.design/streams_api.md``,
-``.design/streams_engine.md``). Each stream is an ordered, durable chunk log
-with a monotonic cursor, replay-then-tail reads, and a terminal state. It
-needs no alarm, so it works on facets as is. Live fanout is in-isolate: a
-Durable Object runs in one isolate at a time, so every concurrent reader
-shares the producer's; a reader that outlives the isolate replays from its
-cursor when it comes back.
+See ``.design/streams_api.md`` and ``.design/streams_engine.md``. Each stream
+is an ordered, durable chunk log with a monotonic cursor, replay-then-tail
+reads, and a terminal state. It needs no alarm, so it works on facets as is.
+Live fanout is in-isolate: a Durable Object runs in one isolate at a time, so
+every concurrent reader shares the producer's; a reader that outlives the
+isolate replays from its cursor when it comes back.
 """
 
 import asyncio
@@ -15,6 +14,7 @@ import json
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any, cast, override
 
+from ..core.encoding import byte_length, to_js_json
 from ..core.events import Disposable
 from ..core.timing import from_epoch_ms, now_ms
 from ..core.types import JSONValue
@@ -35,7 +35,6 @@ _DEFAULT_BATCH_SIZE = 100
 _DEFAULT_LIST_LIMIT = 100
 
 type DeleteHook = Callable[[StreamRow, int], None]
-"""Sees a stream's row and cursor just before its rows are deleted."""
 
 
 class StreamWriter:
@@ -138,8 +137,6 @@ class Streams(LifecycleCapability):
             self._store.ensure_tables()
             await storage.put(_SCHEMA_VERSION_KEY, _SCHEMA_VERSION)
 
-    # Producing
-
     async def open(
         self,
         stream_id: str,
@@ -191,8 +188,6 @@ class Streams(LifecycleCapability):
         self._insert_stream(stream_id, tag, metadata)
         return StreamWriter(self, stream_id)
 
-    # Reading
-
     async def read(
         self, stream_id: str, *, start: int = 0
     ) -> AsyncIterator[StreamChunk]:
@@ -241,11 +236,12 @@ class Streams(LifecycleCapability):
         """
         await self.lifecycle.ready()
         store = self._store
+        if store.state(stream_id) is None:
+            raise StreamNotFoundError(stream_id)
+
         size = max(1, batch_size)
         next_seq = max(0, start)
         caught_up = False
-        if store.state(stream_id) is None:
-            raise StreamNotFoundError(stream_id)
         while True:
             batch = [
                 StreamChunk(seq=seq, chunk=value)
@@ -320,11 +316,9 @@ class Streams(LifecycleCapability):
         self._emit("stream:deleted", {"streamId": stream_id})
         return True
 
-    # Synchronous surface (first-party machinery, e.g. chat)
-    #
-    # Same-isolate and synchronous; it skips lifecycle.ready(), so callers
-    # own startup ordering (upstream's __DO_NOT_USE_WILL_BREAK__sync). The
-    # public methods are built on the same operations.
+    # The underscored methods below serve first-party code such as chat. They
+    # run synchronously in this isolate and skip lifecycle.ready(), so callers
+    # own startup ordering (upstream's __DO_NOT_USE_WILL_BREAK__sync).
 
     def _ensure_tables(self) -> None:
         self._store.ensure_tables()
@@ -369,11 +363,8 @@ class Streams(LifecycleCapability):
     def _cursor(self, stream_id: str) -> int:
         return self._store.tail(stream_id).next_seq
 
+    # Hooks must be synchronous: a cutover's hooks run inside its transaction.
     def _on_delete(self, hook: DeleteHook) -> Disposable:
-        """Observe every deletion of a stream's rows (synchronous hooks only).
-
-        A cutover's hooks run inside its transaction.
-        """
         self._delete_hooks.append(hook)
         return Disposable(lambda: self._delete_hooks.remove(hook))
 
@@ -386,12 +377,6 @@ class Streams(LifecycleCapability):
         commit: Callable[[], None] | None = None,
         discard: bool = False,
     ) -> bool:
-        """Settle a live stream; return whether this call ended it.
-
-        With ``commit`` or ``discard``, the settle, ``commit()``, and the
-        deletion run in one transaction, and a raising ``commit`` rolls them
-        all back. Events and wakeups follow only a committed settle.
-        """
         if commit is None and not discard:
             settled = self._store.settle(stream_id, state, reason)
             if settled:
@@ -417,6 +402,7 @@ class Streams(LifecycleCapability):
             if discard:
                 outcome["deleted"] = self._delete_rows(stream_id)
 
+        # A raising commit rolls back the settle and the deletion with it.
         self.lifecycle.storage.transactionSync(cutover)
         if outcome["settled"]:
             self._emit_settled(stream_id, state, reason)
@@ -426,13 +412,11 @@ class Streams(LifecycleCapability):
         return outcome["settled"]
 
     def _delete_unchecked(self, stream_id: str) -> None:
-        """Delete a stream in any state, waking its readers so they end."""
         if self._delete_rows(stream_id):
             self._emit("stream:deleted", {"streamId": stream_id})
         self._wake(stream_id)
 
     def _delete_many(self, stream_ids: Sequence[str]) -> None:
-        """Delete streams in any state, without events."""
         for stream_id in stream_ids:
             self._delete_rows(stream_id)
             self._wake(stream_id)
@@ -440,10 +424,9 @@ class Streams(LifecycleCapability):
     def _read_chunks(
         self, stream_id: str, start: int, limit: int
     ) -> Sequence[StreamChunkRow]:
-        """Return one page of the log from ``start``, values as JSON text."""
         return [
             StreamChunkRow(
-                stream_id=stream_id, seq=seq, chunk=_dumps(value), created_at=at
+                stream_id=stream_id, seq=seq, chunk=to_js_json(value), created_at=at
             )
             for seq, value, at in self._store.chunks(stream_id, start, limit)
         ]
@@ -458,8 +441,6 @@ class Streams(LifecycleCapability):
         # callers apply their own ownership check.
         return self._store.rows_by_tag(tag, state)
 
-    # Internals
-
     def _delete_rows(self, stream_id: str) -> bool:
         # Every deletion passes here, so hooks see each one, with the row and
         # cursor as they were.
@@ -473,11 +454,10 @@ class Streams(LifecycleCapability):
 
     def _serialize(self, value: Any, context: str) -> str:
         try:
-            text = _dumps(value)
+            text = to_js_json(value)
         except (TypeError, ValueError) as error:
             raise StreamSerializationError(context, str(error)) from error
-        # surrogatepass: a lone surrogate (from JS text) is measured, not raised.
-        size = len(text.encode("utf-8", "surrogatepass"))
+        size = byte_length(text)
         if size > self._max_chunk_bytes:
             raise StreamSerializationError(
                 context,
@@ -547,13 +527,6 @@ def _validate_stream_id(stream_id: str) -> None:
         raise ValueError("Stream ids must be non-empty strings")
     if len(stream_id) > _MAX_STREAM_ID_LENGTH:
         raise ValueError(f"Stream ids are at most {_MAX_STREAM_ID_LENGTH} characters")
-
-
-def _dumps(value: Any) -> str:
-    # Compact and keeping non-ASCII characters, like JSON.stringify (escaping
-    # them would store 2-3x the bytes). NaN and infinities aren't JSON, so
-    # they're refused rather than stored as text no other reader could parse.
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
 def _metadata(text: str | None) -> dict[str, JSONValue] | None:

@@ -1,7 +1,6 @@
-"""The SSE decoder, raising `MCPProtocolError` for an oversized event.
+"""Streamable HTTP servers may answer a POST with ``text/event-stream``.
 
-Streamable HTTP servers answer a POST with ``text/event-stream`` when they
-stream, and the GET listener is one long event stream
+The GET listener is one long event stream, in the WHATWG format
 (``.design/mcp_engine.md`` §4.4).
 """
 

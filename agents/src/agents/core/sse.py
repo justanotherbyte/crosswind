@@ -37,24 +37,24 @@ class SseEvent:
         The data lines, joined with newlines. Empty for a priming event.
     id
         The last event id seen on the stream, if any.
-    retry
+    retry_ms
         The reconnection delay the server asked for, in milliseconds.
     """
 
     event: str = "message"
     data: str = ""
     id: str | None = None
-    retry: int | None = None
+    retry_ms: int | None = None
 
 
 class _Decoder:
     """Turns lines into events; owns the fields of the event being built."""
 
-    __slots__ = ("_data", "_event", "_id", "_retry", "_size")
+    __slots__ = ("_data", "_event", "_id", "_retry_ms", "_size")
 
     def __init__(self) -> None:
         self._id: str | None = None
-        self._retry: int | None = None
+        self._retry_ms: int | None = None
         self._reset()
 
     def _reset(self) -> None:
@@ -81,7 +81,7 @@ class _Decoder:
         elif name == "id" and "\0" not in value:
             self._id = value
         elif name == "retry" and value.isascii() and value.isdigit():
-            self._retry = int(value)
+            self._retry_ms = int(value)
         return None
 
     def _dispatch(self) -> SseEvent | None:
@@ -94,7 +94,7 @@ class _Decoder:
             event=self._event or "message",
             data="\n".join(self._data),
             id=self._id,
-            retry=self._retry,
+            retry_ms=self._retry_ms,
         )
         self._reset()
         return event

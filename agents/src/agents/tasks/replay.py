@@ -1,11 +1,10 @@
-"""Replay: the `TaskStep` one execution attempt receives.
+"""Port of upstream ``tasks/replay.ts``.
 
-Port of upstream ``tasks/replay.ts``. A completed step returns its journaled
-result; the first unfinished step (the frontier) does real work. Sleeps and
-retry waits end the attempt with `TaskSuspension`. Each step attempt runs as
-its own asyncio task, so a timeout or cancellation settles the attempt even
-if the step function ignores it (``.design/scheduling_queue_tasks_api.md``
-§2.6).
+A completed step returns its journaled result; the first unfinished step (the
+frontier) does real work. Sleeps and retry waits end the attempt with
+`TaskSuspension`. Each step attempt runs as its own asyncio task, so a timeout
+or cancellation settles the attempt even if the step function ignores it
+(``.design/scheduling_queue_tasks_api.md`` §2.6).
 """
 
 import asyncio
@@ -55,7 +54,6 @@ _MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000
 
 
 def retry_delay_ms(policy: ResolvedStepPolicy, failed_attempt: int) -> int:
-    """Return the wait before the attempt after ``failed_attempt`` (capped at a day)."""
     base = policy.retry_delay_ms
     match policy.backoff:
         case "constant":
@@ -72,32 +70,24 @@ def resolve_step_policy(
     retries: StepRetries | None,
     timeout: Duration | None,
 ) -> ResolvedStepPolicy:
-    """Fill a step's unset retry and timeout fields from the defaults.
-
-    Raises
-    ------
-    ValueError
-        If ``retries.limit`` is below 1, a delay is negative, or the timeout
-        isn't positive.
-    """
-    limit = (
-        retries.limit if retries and retries.limit is not None else defaults.retry_limit
-    )
+    retries = retries or StepRetries()
+    limit = retries.limit if retries.limit is not None else defaults.retry_limit
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError(f"StepRetries.limit must be an int >= 1, not {limit!r}")
-    delay_ms = defaults.retry_delay_ms
-    if retries is not None and retries.delay is not None:
-        delay_ms = _duration_ms(retries.delay, "StepRetries.delay", allow_zero=True)
+    delay_ms = (
+        _duration_ms(retries.delay, "StepRetries.delay", allow_zero=True)
+        if retries.delay is not None
+        else defaults.retry_delay_ms
+    )
     timeout_ms = (
         _duration_ms(timeout, "step timeout", allow_zero=False)
         if timeout is not None
         else defaults.timeout_ms
     )
-    backoff = retries.backoff if retries and retries.backoff else defaults.backoff
     return ResolvedStepPolicy(
         retry_limit=limit,
         retry_delay_ms=delay_ms,
-        backoff=backoff,
+        backoff=retries.backoff or defaults.backoff,
         timeout_ms=timeout_ms,
     )
 
@@ -111,23 +101,10 @@ def _duration_ms(duration: Duration, label: str, *, allow_zero: bool) -> int:
     return int(ms)
 
 
+# The first attempt starts live. A later attempt starts silent and goes live at
+# the frontier (the first journal miss, or a step still waiting or running), so
+# replayed status() calls don't re-publish old progress.
 class ReplayStep:
-    """The `TaskStep` for one execution attempt.
-
-    The first attempt starts "live". A later attempt starts silent and goes
-    live at the frontier (the first journal miss, or a step still waiting or
-    running), so replayed ``status()`` calls don't re-publish old progress.
-
-    Parameters
-    ----------
-    engine
-        The attempt's journal operations.
-    starts_live
-        Whether ``status()`` is recorded from the start (the first attempt).
-    interrupted
-        The step a dead isolate left running, if any.
-    """
-
     __slots__ = ("_current", "_engine", "_interrupted", "_live", "_used_names")
 
     def __init__(
@@ -145,11 +122,9 @@ class ReplayStep:
 
     @property
     def interrupted(self) -> StepInterruption | None:
-        """The step a dead isolate left running, or ``None`` on a clean attempt."""
         return self._interrupted
 
     def cancel_current(self) -> None:
-        """Cancel the step attempt in progress, if any (run cancellation)."""
         if self._current is not None:
             self._current.cancel()
 
@@ -161,20 +136,6 @@ class ReplayStep:
         retries: StepRetries | None = None,
         timeout: Duration | None = None,
     ) -> T:
-        """Run ``fn`` once as step ``name``; replays return its journaled result.
-
-        Returns the journaled (decoded JSON) value even the first time, so
-        live runs and replays see the same values.
-
-        Raises
-        ------
-        DuplicateTaskStepError
-            If this run already used ``name``.
-        TaskReplayDivergedError
-            If ``name`` was journaled as a sleep.
-        TaskSerializationError
-            If ``fn``'s result isn't plain JSON (the run fails).
-        """
         policy = resolve_step_policy(self._engine.defaults, retries, timeout)
         self._enter_step(name)
         row = self._engine.read_step(name)
@@ -212,28 +173,22 @@ class ReplayStep:
                 return await self._execute_attempt(name, attempt, policy, fn)
 
     async def sleep(self, name: str, duration: Duration) -> None:
-        """Sleep durably for ``duration``; the first recorded deadline wins."""
         delay_ms = _duration_ms(duration, "sleep duration", allow_zero=True)
+        # Lazy, so a replay keeps the first recorded deadline.
         await self._sleep_at(name, lambda: now_ms() + delay_ms)
 
     async def sleep_until(self, name: str, when: datetime) -> None:
-        """Sleep durably until ``when`` (timezone-aware)."""
         wake_at = epoch_ms(when)
         await self._sleep_at(name, lambda: wake_at)
 
     async def status(self, message: str) -> None:
-        """Record observable progress (silent while replaying old ground)."""
         if self._live:
             self._engine.write_status(str(message))
 
     def idempotency_key(self, name: str) -> str:
-        """Return the key ``do(name, ...)`` passes to its attempts."""
         return self._engine.idempotency_key(name)
 
-    # Internals
-
     def _enter_step(self, name: str) -> None:
-        """Check a step boundary: the name rules, duplicates, cancellation."""
         if not isinstance(name, str) or not name:
             raise ValueError("Step names must be non-empty strings")
         if len(name) > MAX_STEP_NAME_LENGTH:
@@ -279,7 +234,6 @@ class ReplayStep:
         policy: ResolvedStepPolicy,
         fn: Callable[[TaskStepAttempt], Awaitable[T]],
     ) -> T:
-        """Run one attempt of a ``do`` step under its timeout and retry policy."""
         engine = self._engine
         engine.refresh_claim()
         engine.emit("task:step:started", {"step": name, "attempt": attempt})
@@ -302,15 +256,14 @@ class ReplayStep:
             if not done:
                 error = StepTimeoutError(name, attempt, policy.timeout_ms)
             elif work.cancelled():
-                error = self._cancelled_attempt()
+                error = self._cancellation_error()
             elif (raised := work.exception()) is not None:
                 error = raised
             else:
                 return self._complete(name, attempt, work.result())
-        raise self._classify(name, attempt, policy, error)
+        raise self._settle_failed_attempt(name, attempt, policy, error)
 
-    def _cancelled_attempt(self) -> BaseException:
-        """Explain a step attempt that was cancelled from outside it."""
+    def _cancellation_error(self) -> BaseException:
         if not self._engine.is_current():
             return AttemptSupersededError(self._engine.run_id)
         requested, reason = self._engine.cancellation_requested()
@@ -331,10 +284,9 @@ class ReplayStep:
         # The journaled value, so live runs and replays see the same thing.
         return deserialize_task_value(text)
 
-    def _classify(
+    def _settle_failed_attempt(
         self, name: str, attempt: int, policy: ResolvedStepPolicy, error: BaseException
     ) -> BaseException:
-        """Decide what a failed step attempt does; return what to raise."""
         if not isinstance(error, Exception):
             return error  # supersession, cancellation, or a real CancelledError
         requested, reason = self._engine.cancellation_requested()

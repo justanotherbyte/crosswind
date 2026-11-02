@@ -1,4 +1,4 @@
-"""Sub-agents: child agents running as facets (upstream ``dynamic-agents/``)."""
+"""Port of upstream ``dynamic-agents/``."""
 
 from .api import DynamicAgents
 from .errors import SubAgentAbortedError

@@ -1,4 +1,4 @@
-"""Durable, replayable background work (upstream ``tasks/``)."""
+"""Port of upstream ``tasks/``."""
 
 from .decorator import TaskHandle, task
 from .errors import (

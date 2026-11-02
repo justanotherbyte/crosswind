@@ -127,9 +127,6 @@ def run[T](coro: Any) -> T:
     return asyncio.run(coro)
 
 
-# Connect sequence
-
-
 def test_connect_sends_identity_state_and_empty_mcp_then_on_connect() -> None:
     agent = make()
     ws = run(connect(agent))
@@ -173,9 +170,6 @@ def test_identity_can_be_turned_off_and_protocol_skipped_per_connection() -> Non
     assert binary.frames() == []
     connection = agent.get_connection("b")
     assert connection is not None and not connection.protocol_enabled
-
-
-# State
 
 
 def test_rpc_set_state_broadcasts_to_everyone_and_runs_on_state_changed() -> None:
@@ -261,9 +255,6 @@ def test_initial_state_set_in_init_is_used() -> None:
     assert run(scenario()) == {"seeded_for": "room-1"}
 
 
-# Messages, RPC, context
-
-
 def test_messages_rpc_and_context() -> None:
     agent = make()
 
@@ -335,9 +326,6 @@ def test_close_emits_disconnect_and_runs_on_close() -> None:
     }
 
 
-# HTTP and startup
-
-
 class WebAgent(Agent):
     def __init__(self, ctx: Any, env: Any) -> None:
         super().__init__(ctx, env)
@@ -395,9 +383,6 @@ def test_default_on_request_is_404() -> None:
     assert response.status == 404
 
 
-# Queue
-
-
 def test_queue_runs_methods_as_the_current_agent() -> None:
     agent = make()
 
@@ -425,9 +410,6 @@ def test_dequeue_helpers() -> None:
         assert await agent.dequeue_all() == 0
 
     run(scenario())
-
-
-# Destroy
 
 
 def test_destroy_wipes_storage_closes_sockets_and_resets() -> None:

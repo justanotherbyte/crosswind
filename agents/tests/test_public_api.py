@@ -1,4 +1,7 @@
+import inspect
+
 import agents
+import agents.mcp
 from agents import (
     agent,
     chat,
@@ -54,3 +57,14 @@ def test_all_is_a_tuple() -> None:
     assert isinstance(agents.__all__, tuple)
     for package in SUBPACKAGES:
         assert isinstance(package.__all__, tuple)
+
+
+def test_public_classes_and_functions_have_docstrings() -> None:
+    for package in (agents, agents.mcp):
+        for name in package.__all__:
+            obj = getattr(package, name)
+            if not (inspect.isclass(obj) or inspect.isfunction(obj)):
+                continue
+            doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else obj.__doc__
+            # dataclasses fill a missing class docstring with their signature
+            assert doc and not doc.startswith(f"{name}("), name

@@ -298,7 +298,7 @@ class WorkersAIModel:
         self.clean_text = clean_text
         """Rewrites the text of each answer; ``None`` keeps it as sent."""
 
-    def __repr__(self) -> str:  # noqa: D105
+    def __repr__(self) -> str:
         return f"<{type(self).__name__} name={self.name!r}>"
 
     async def complete(

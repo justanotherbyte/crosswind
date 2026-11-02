@@ -1,7 +1,4 @@
-"""``self.dynamic_agents``: an agent's sub-agents (facets).
-
-Port of upstream ``dynamic-agents/api.ts`` (``.design/agent_api.md`` §1.15).
-"""
+"""Port of upstream ``dynamic-agents/api.ts`` (``.design/agent_api.md`` §1.15)."""
 
 from collections.abc import Sequence
 from typing import TYPE_CHECKING

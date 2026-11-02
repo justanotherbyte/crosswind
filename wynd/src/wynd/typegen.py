@@ -7,6 +7,7 @@ from .console import info
 from .errors import WyndError
 from .project import Project
 from .sync import select_sdk
+from .utils import read_text
 from .wrangler_config import JSON, BindingRef
 
 __all__ = ("render_env", "write_env")
@@ -42,8 +43,7 @@ def write_env(project: Project, check: bool = False) -> None:
         )
 
     config = project.config
-    dev_vars = config.source.parent / ".dev.vars"
-    secrets = DEV_VARS_KEY.findall(dev_vars.read_text()) if dev_vars.is_file() else []
+    secrets = DEV_VARS_KEY.findall(read_text(config.source.parent / ".dev.vars") or "")
     text = render_env(
         config.bindings,
         config.vars,
@@ -52,7 +52,7 @@ def write_env(project: Project, check: bool = False) -> None:
     )
 
     path = config.source_dir / "env.py"
-    current = path.read_text() if path.is_file() else None
+    current = read_text(path)
     if current == text:
         return
 

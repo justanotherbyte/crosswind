@@ -1,9 +1,7 @@
-"""``@callable`` methods answered over ``rpc`` frames.
+"""Port of upstream ``callable-decorator.ts`` and ``StreamingResponse``.
 
-Port of upstream ``callable-decorator.ts``, ``StreamingResponse``, and the
-``rpc`` handling in ``Agent.onMessage`` / ``WebSockets#answerRpc``
-(``.design/agent_api.md`` §1.8, wire §5.4). Methods stream either by taking a
-`StreamingResponse` first (``streaming=True``) or by being async generators.
+The ``rpc`` handling comes from ``Agent.onMessage`` and
+``WebSockets#answerRpc`` (``.design/agent_api.md`` §1.8, wire §5.4).
 """
 
 import inspect
@@ -85,33 +83,23 @@ def callable(
     return decorate(fn) if fn is not None else decorate
 
 
-def callable_metadata(method: object) -> CallableMetadata | None:
-    """Return the metadata ``@callable`` recorded on ``method``, if any."""
-    metadata = getattr(method, _METADATA_ATTR, None)
-    return metadata if isinstance(metadata, CallableMetadata) else None
-
-
 def callable_methods(target: object) -> dict[str, CallableMetadata]:
-    """Return ``target``'s ``@callable`` methods by name.
-
-    The nearest definition in the class hierarchy wins, so an undecorated
-    override makes a method uncallable.
-    """
     methods: dict[str, CallableMetadata] = {}
     seen: set[str] = set()
     for cls in type(target).__mro__:
         for name, value in vars(cls).items():
+            # The nearest definition wins, so an undecorated override makes a
+            # method uncallable.
             if name in seen:
                 continue
             seen.add(name)
-            metadata = callable_metadata(value)
-            if metadata is not None:
+            metadata = getattr(value, _METADATA_ATTR, None)
+            if isinstance(metadata, CallableMetadata):
                 methods[name] = metadata
     return methods
 
 
 def is_rpc_request(frame: object) -> bool:
-    """Return whether a parsed frame is a well-formed ``rpc`` request."""
     return (
         isinstance(frame, dict)
         and frame.get("type") == "rpc"
@@ -151,8 +139,14 @@ class StreamingResponse:
         if self._closed:
             _log.warning("StreamingResponse.send() after the stream closed; dropped")
             return False
-        frame = {"type": "rpc", "id": self._id, "success": True, "done": False}
-        return _send(self._connection, to_json({**frame, "result": chunk}))
+        frame = {
+            "type": "rpc",
+            "id": self._id,
+            "success": True,
+            "done": False,
+            "result": chunk,
+        }
+        return _send(self._connection, to_json(frame))
 
     def end(self, final: Any = None) -> bool:
         """Close the stream, with an optional final result.
@@ -176,19 +170,6 @@ class StreamingResponse:
 
 
 class RpcDispatcher:
-    """Answers ``rpc`` frames by calling a target's ``@callable`` methods.
-
-    The caller runs `answer` in the host context, with the calling
-    connection.
-
-    Parameters
-    ----------
-    target
-        The object whose ``@callable`` methods clients may call.
-    emit
-        Publishes the ``rpc`` and ``rpc:error`` events.
-    """
-
     __slots__ = ("_emit", "_methods", "_target")
 
     def __init__(self, target: object, emit: Callable[[str, Any], None]) -> None:
@@ -196,8 +177,8 @@ class RpcDispatcher:
         self._methods: Mapping[str, CallableMetadata] = callable_methods(target)
         self._emit = emit
 
+    # Callers run this in the host context, with the calling connection.
     async def answer(self, connection: Connection, request: RpcRequest) -> None:
-        """Call the requested method and send its result, chunks, or error."""
         name, id, args = request["method"], request["id"], request["args"]
         metadata = self._methods.get(name)
         if metadata is None:
@@ -236,7 +217,7 @@ class RpcDispatcher:
         response = StreamingResponse(connection, id)
         try:
             if inspect.isasyncgenfunction(method):
-                await _drain(method(*args), response)
+                await _send_chunks(method(*args), response)
             else:
                 await method(response, *args)
         except Exception as error:
@@ -252,8 +233,9 @@ class RpcDispatcher:
         _send(connection, _error_frame(id, message))
 
 
-async def _drain(chunks: AsyncGenerator[Any], response: StreamingResponse) -> None:
-    """Send each yielded chunk; stop (closing the generator) if the client goes."""
+async def _send_chunks(
+    chunks: AsyncGenerator[Any], response: StreamingResponse
+) -> None:
     try:
         async for chunk in chunks:
             if not response.send(chunk):
@@ -279,7 +261,6 @@ def _error_frame(id: str, message: str) -> str:
 
 
 def _send(connection: Connection, text: str) -> bool:
-    """Send a response; ``False`` if the client has gone (it's dropped)."""
     if not connection._is_open:
         return False
     with suppress(_ffi.JsException):

@@ -1,4 +1,4 @@
-"""Types for fibers and keep-alive (``.design/fibers_api.md`` §2.2)."""
+"""Specified in ``.design/fibers_api.md`` §2.2."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -152,15 +152,12 @@ type FiberRecoveryResult = (
 type FiberRecoveryHandler = Callable[
     [FiberRecoveryContext], Awaitable[FiberRecoveryResult | None]
 ]
-"""The user's recovery hook (``on_fiber_recovered``)."""
 
 type InternalFiberRecoveryHandler = Callable[[FiberRecoveryContext], Awaitable[bool]]
-"""A framework recovery hook that runs first; ``True`` means it handled the fiber."""
 
 
+# .design/sql_schemas.md §12.1
 class FiberRunRow(TypedDict):
-    """A raw ``cf_agents_runs`` row (``.design/sql_schemas.md`` §12.1)."""
-
     id: str
     name: str
     snapshot: str | None
@@ -170,9 +167,8 @@ class FiberRunRow(TypedDict):
     error_message: str | None
 
 
+# .design/sql_schemas.md §12.2
 class FiberLedgerRow(TypedDict):
-    """A raw ``cf_agents_fibers`` row (``.design/sql_schemas.md`` §12.2)."""
-
     fiber_id: str
     idempotency_key: str | None
     name: str
@@ -201,8 +197,6 @@ class _RestartedMessage(TypedDict):
 
 
 type KeepAliveRouteMessage = _AcquireMessage | _ReleaseMessage | _RestartedMessage
-"""A facet asking the root for (or returning) a keep-alive lease, or telling it
-that the facet started in a new isolate (``isolate`` names the facet's)."""
 
 
 class _RegisterRunMessage(TypedDict):
@@ -215,4 +209,3 @@ class _CheckRunsMessage(TypedDict):
 
 
 type FiberRouteMessage = _RegisterRunMessage | _CheckRunsMessage
-"""A facet indexing its fiber on the root, or the root asking it to recover."""

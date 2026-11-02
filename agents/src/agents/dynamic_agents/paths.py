@@ -1,8 +1,6 @@
-"""Agent paths: ``/sub/`` URLs, path keys, and facet identity names.
+"""Port of upstream ``sub-routing.ts`` and ``dynamic-agents/identity.ts``.
 
-Port of upstream ``sub-routing.ts`` (parsing and ``buildAgentPath`` /
-``buildAgentUrl``) and ``dynamic-agents/identity.ts`` (path-scoped identity
-names; ``.design/subagents_engine.md``).
+See ``.design/subagents_engine.md``.
 """
 
 import hashlib
@@ -27,7 +25,6 @@ __all__ = (
 )
 
 SUB_PREFIX = "sub"
-"""The URL segment that separates each parent-to-child hop."""
 
 _IDENTITY_PREFIX = "cf-agents:v2:"
 # encodeURIComponent leaves these unescaped.
@@ -41,12 +38,6 @@ def _encode(value: str) -> str:
 def parse_sub_agent_path(
     url: str, known_classes: Iterable[str] | None = None
 ) -> SubAgentPathMatch | None:
-    """Return the first ``/sub/{class}/{name}`` hop in ``url``'s path, or ``None``.
-
-    With ``known_classes``, a class segment must be the kebab case of one of
-    them (and resolves to it); without, it's converted back to CamelCase.
-    A child name that `build_agent_path` would reject makes it ``None``.
-    """
     parts = [part for part in urlsplit(url).path.split("/") if part]
     known = list(known_classes) if known_classes is not None else None
     for index, part in enumerate(parts):
@@ -78,23 +69,14 @@ def _resolve_class(segment: str, known: list[str] | None) -> str | None:
 
 
 def path_key(path: Sequence[AgentPathStep]) -> str:
-    """Return a path's stable key (``Class:name/Class:name``, URL-encoded)."""
     return "/".join(f"{_encode(step.class_name)}:{_encode(step.name)}" for step in path)
 
 
 def path_to_json(path: Sequence[AgentPathStep]) -> str:
-    """Return a path as JSON (route addresses and stored parent paths)."""
     return json.dumps([[step.class_name, step.name] for step in path])
 
 
 def path_from_json(text: str) -> list[AgentPathStep]:
-    """Parse a path stored by `path_to_json`.
-
-    Raises
-    ------
-    ValueError
-        If ``text`` isn't a path.
-    """
     raw = json.loads(text)
     if not isinstance(raw, list) or not all(
         isinstance(step, list)
@@ -107,11 +89,8 @@ def path_from_json(text: str) -> list[AgentPathStep]:
 
 
 def identity_name(name: str, child_path: Sequence[AgentPathStep]) -> str:
-    """Return a facet's identity name, unique to its path from the root.
-
-    Two parents' children with the same name get different identities (and
-    so different storage).
-    """
+    # Hashing the whole path gives same-named children of different parents
+    # different identities, and so different storage.
     digest = hashlib.sha256(path_to_json(child_path).encode()).hexdigest()
     return f"{_IDENTITY_PREFIX}{_encode(name)}:{digest}"
 
@@ -119,12 +98,10 @@ def identity_name(name: str, child_path: Sequence[AgentPathStep]) -> str:
 def is_same_prefix(
     prefix: Sequence[AgentPathStep], path: Sequence[AgentPathStep]
 ) -> bool:
-    """Return whether ``path`` starts with ``prefix``."""
     return len(path) >= len(prefix) and tuple(path[: len(prefix)]) == tuple(prefix)
 
 
 def rewrite_pathname(url: str, pathname: str) -> str:
-    """Return ``url`` with its path replaced by ``pathname`` (query kept)."""
     parts = urlsplit(url)
     return urlunsplit(
         (parts.scheme, parts.netloc, pathname, parts.query, parts.fragment)

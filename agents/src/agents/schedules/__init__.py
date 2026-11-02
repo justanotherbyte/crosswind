@@ -1,4 +1,4 @@
-"""Persistent schedules: one-shot, cron, and interval (upstream ``schedules/``)."""
+"""Port of upstream ``schedules/``."""
 
 from .errors import InvalidCronExpressionError
 from .scheduler import Scheduler

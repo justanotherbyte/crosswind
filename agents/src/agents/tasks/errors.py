@@ -1,13 +1,13 @@
-"""Exceptions and control-flow signals for the Tasks capability.
+"""The signals subclass ``BaseException``, like ``asyncio.CancelledError``.
 
-The signals (`TaskSuspension`, `TaskCancellation`, `AttemptSupersededError`)
-end an execution attempt by unwinding through user code. They subclass
-``BaseException``, like ``asyncio.CancelledError``, so a handler's
+`TaskSuspension`, `TaskCancellation` and `AttemptSupersededError` end an
+execution attempt by unwinding through user code, so a handler's
 ``except Exception:`` can't swallow a sleep or a cancellation
 (``.design/tasks_engine.md`` §2.2 item 1).
 """
 
 from ..core.errors import AgentsException
+from .types import TaskWaitReason
 
 __all__ = (
     "AttemptSupersededError",
@@ -31,7 +31,6 @@ class NonRetryableError(AgentsException):
 
 
 def is_non_retryable(error: BaseException) -> bool:
-    """Return whether ``error`` should skip a step's remaining retries."""
     return isinstance(error, NonRetryableError) or type(error).__name__ == (
         "NonRetryableError"
     )
@@ -134,48 +133,21 @@ class StepTimeoutError(AgentsException, TimeoutError):
 
 
 class TaskSuspension(BaseException):
-    """Ends an attempt while the run waits for a durable deadline (internal).
-
-    Parameters
-    ----------
-    wake_at_ms
-        When the run should wake (epoch ms).
-    reason
-        ``"sleep"`` or ``"retry"``.
-    """
-
-    def __init__(self, wake_at_ms: int, reason: str) -> None:
+    def __init__(self, wake_at_ms: int, reason: TaskWaitReason) -> None:
         super().__init__(f"suspended until {wake_at_ms} ({reason})")
         self.wake_at_ms = wake_at_ms
         self.reason = reason
 
 
 class TaskCancellation(BaseException):
-    """Ends an attempt whose run was cancelled (internal).
-
-    Parameters
-    ----------
-    reason
-        The cancellation reason, if given.
-    """
-
     def __init__(self, reason: str | None) -> None:
         super().__init__(reason or "cancelled")
         self.reason = reason
 
 
+# Every write the stale attempt might still make is fenced by its generation,
+# so unwinding is all that's left to do.
 class AttemptSupersededError(BaseException):
-    """Ends an attempt that a newer attempt has replaced (internal).
-
-    Every write the stale attempt might still make is fenced by its
-    generation, so unwinding is all that's left to do.
-
-    Parameters
-    ----------
-    run_id
-        The run.
-    """
-
     def __init__(self, run_id: str) -> None:
         super().__init__(
             f"Task attempt superseded: run {run_id!r} is no longer claimed by "

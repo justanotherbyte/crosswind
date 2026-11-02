@@ -181,9 +181,6 @@ def tool_text(message: dict[str, Any]) -> str:
     return message["result"]["content"][0]["text"]
 
 
-# Both eras
-
-
 @pytest.mark.parametrize("json_response", [True, False])
 def test_modern_tools_call_round_trip(json_response: bool) -> None:
     handler = create_mcp_handler(build_server(), json_response=json_response)
@@ -480,9 +477,6 @@ def test_host_and_origin_are_checked_before_the_preflight() -> None:
     assert rejected(serve(handler, request), "Origin")
 
 
-# Factories
-
-
 def test_factory_is_called_once_per_request() -> None:
     built: list[MCPServer] = []
 
@@ -518,9 +512,6 @@ def test_failing_factory_is_a_500() -> None:
     assert response.status == 500
     assert body["error"] == {"code": -32603, "message": "Internal server error"}
     assert response.headers.get("access-control-allow-origin") == "*"
-
-
-# Server checks
 
 
 class _Verifier:
@@ -564,9 +555,6 @@ def test_subscriptions_are_off() -> None:
         ),
     )
     assert listen["error"]["code"] == -32601
-
-
-# Auth context and the current agent
 
 
 def test_auth_context_reaches_tools() -> None:
@@ -619,9 +607,6 @@ def test_tools_called_from_an_agent_see_the_current_agent() -> None:
         handler_for_agent, modern_request("tools/call", call("agent_class"))
     )
     assert tool_text(outside) == "none"
-
-
-# Import guard
 
 
 def test_import_without_the_sdk_names_the_extra(

@@ -60,7 +60,6 @@ def setup(worker: Worker | None = None) -> tuple[Lifecycle, Worker, Host]:
     return lifecycle, worker, host
 
 
-# Queue and alarm arming
 def test_push_arms_the_alarm_for_the_earliest_job() -> None:
     lifecycle, worker, host = setup()
 
@@ -145,7 +144,6 @@ def test_naive_job_time_is_rejected() -> None:
         asyncio.run(worker.lifecycle.jobs.push(fn="a", time=datetime(2030, 1, 1)))
 
 
-# The alarm loop
 def test_alarm_runs_due_jobs_in_order_and_completes_them() -> None:
     lifecycle, worker, _ = setup()
 
@@ -289,7 +287,6 @@ def test_host_jobs_and_on_alarm_run_after_due_jobs() -> None:
     assert host.handled == ["host-job", "on_alarm"]
 
 
-# Memory-limit circuit breaker
 class Policy(Worker):
     def __init__(self) -> None:
         super().__init__("policy")
@@ -424,7 +421,6 @@ def test_failed_strike_clear_after_a_clean_alarm_still_rearms(
     asyncio.run(scenario())
 
 
-# Rearm during startup
 class PushesOnStart(Worker):
     async def on_start(self) -> None:
         await self.lifecycle.jobs.push(fn="boot", time=future())
@@ -436,3 +432,13 @@ def test_rearm_requested_during_startup_happens_after_it() -> None:
     asyncio.run(lifecycle.start())
     assert host.ctx.storage.alarm_history == [host.ctx.storage.alarm]
     assert host.ctx.storage.alarm is not None
+
+
+def test_rearm_before_any_job_creates_the_table() -> None:
+    lifecycle, _, _ = setup()
+
+    async def scenario() -> None:
+        await lifecycle.start()
+        await lifecycle.rearm_alarm()
+
+    asyncio.run(scenario())

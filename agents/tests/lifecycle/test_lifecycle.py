@@ -61,7 +61,6 @@ def make_request(path: str = "/", *, upgrade: bool = False) -> Request:
     return Request(f"https://example.com{path}", headers=headers)
 
 
-# use()
 def test_duplicate_capability_id_is_rejected() -> None:
     lifecycle = Lifecycle(Host())
     lifecycle.use(Recorder("same", []))
@@ -106,7 +105,6 @@ def test_capability_services_require_installation() -> None:
         _ = Recorder("loose", []).lifecycle
 
 
-# Startup
 class HostWithStart(Host):
     def __init__(self, log: list[str]) -> None:
         super().__init__()
@@ -193,7 +191,6 @@ def test_unnamed_object_fails_before_startup() -> None:
     assert log == []
 
 
-# fetch
 class HostWithRequest(Host):
     def __init__(self) -> None:
         super().__init__()
@@ -255,7 +252,6 @@ def test_error_details_are_sent_only_when_enabled() -> None:
     assert "Traceback" in response.body
 
 
-# Events
 class Emitting(LifecycleCapability):
     def __init__(self) -> None:
         super().__init__("emitter")
@@ -284,7 +280,6 @@ def test_failing_sink_never_fails_the_emitter(caplog: pytest.LogCaptureFixture) 
     assert "sink down" in caplog.text
 
 
-# WebSockets
 class SocketOwner(LifecycleCapability):
     def __init__(self) -> None:
         super().__init__("sockets")

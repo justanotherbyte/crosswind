@@ -1,5 +1,3 @@
-"""Types for the Agent class."""
-
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -129,9 +127,6 @@ class CurrentAgent(Generic[A]):
 type BeforeHook = Callable[
     ["Request", AgentRoute], Awaitable["Response | Request | None"]
 ]
-"""Runs before a request is forwarded to its agent: return a ``Response`` to
-answer it instead (e.g. 403), a ``Request`` to forward that instead, or
-``None`` to forward it unchanged."""
 
 
 @dataclass(slots=True, kw_only=True)
@@ -170,4 +165,3 @@ class RoutingRetryOptions:
 
 
 type RoutingRetry = RoutingRetryOptions | Literal[False] | None
-"""Routing retry settings: ``None`` for the defaults, ``False`` to disable."""

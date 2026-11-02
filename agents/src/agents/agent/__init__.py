@@ -1,4 +1,4 @@
-"""The Agent class (upstream ``index.ts``)."""
+"""Port of upstream ``index.ts``."""
 
 from .agent import Agent
 from .current import get_current_agent

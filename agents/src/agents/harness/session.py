@@ -38,7 +38,7 @@ class HarnessSession:
         self._harness = harness
         self.id = id
 
-    def __repr__(self) -> str:  # noqa: D105
+    def __repr__(self) -> str:
         return f"<HarnessSession id={self.id!r}>"
 
     async def submit(

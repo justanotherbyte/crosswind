@@ -1,10 +1,6 @@
-"""The Agent class: a Durable Object built from Lifecycle capabilities.
+"""Port of upstream ``index.ts`` (``Agent``).
 
-Port of upstream ``index.ts`` (``Agent``). ``Agent`` installs sub-agents,
-Scheduler, Queue, State, WebSockets, and Tasks on its Lifecycle, drives the
-connect sequence, answers ``@callable`` methods, forwards ``/sub/`` requests
-and sockets to sub-agents, and applies its error policy around the user's
-hooks (``.design/agent_api.md``, ``.design/subagents_engine.md``).
+See ``.design/agent_api.md`` and ``.design/subagents_engine.md``.
 """
 
 import asyncio
@@ -258,8 +254,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
             if isinstance(value, FunctionType):
                 setattr(cls, name, _in_agent_context(value))
 
-    # Identity
-
     @property
     def name(self) -> str:
         """The instance name (``idFromName`` / ``getByName``)."""
@@ -327,8 +321,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         """Install a capability (before startup) and return it."""
         self._lifecycle.use(capability)
         return capability
-
-    # Hooks (override these)
 
     async def on_start(self) -> None:
         """Run once per wake, after capabilities start and before any event."""
@@ -416,8 +408,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
     async def on_state_changed(self, state: S, source: StateSource) -> None:
         """Run after a state change is saved and broadcast."""
 
-    # State
-
     @property
     def state(self) -> S | None:
         """The current state (treat it as read-only; change it with `set_state`)."""
@@ -447,9 +437,9 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         self.validate_state_change(next_state, source)
 
     def _state_changed(self, state: S, source: StateSource) -> None:
-        self._broadcast_state(source if isinstance(source, Connection) else None)
-        self._emit("state:update", {})
         connection = source if isinstance(source, Connection) else None
+        self._broadcast_state(connection)
+        self._emit("state:update", {})
         self._spawn(
             run_in_host_context(
                 self,
@@ -467,7 +457,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         )
 
     def _broadcast_protocol(self, text: str, exclude: Connection | None = None) -> None:
-        # Protocol frames go to protocol-enabled clients that finished connecting.
         connecting = self._websockets._connecting
         for connection in self.get_connections():
             if connection == exclude or connection in connecting:
@@ -481,8 +470,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         except Exception as error:
             _log.exception("on_state_changed failed")
             await self._report_error(None, error)
-
-    # Connections
 
     def get_connections(self, tag: str | None = None) -> Iterator[Connection]:
         """Yield the open connections, optionally only those with ``tag``."""
@@ -535,13 +522,9 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
                 continue
             _send(connection, message)
 
-    # RPC
-
     def get_callable_methods(self) -> dict[str, CallableMetadata]:
         """Return the ``@callable`` methods clients may call, by name."""
         return callable_methods(self)
-
-    # Schedules
 
     async def schedule(
         self,
@@ -611,8 +594,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         """Cancel one schedule; return whether it existed."""
         return await self._scheduler.cancel(id)
 
-    # Queue
-
     async def queue(
         self,
         callback: str | Callable[..., Any],
@@ -667,8 +648,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
     async def _callback_failed(self, error: Exception) -> None:
         # A scheduled or queued callback, or a task run, failed for good.
         await run_in_host_context(self, partial(self._report_error, None, error))
-
-    # Fibers
 
     async def run_fiber[T](
         self, name: str, fn: Callable[[FiberContext], Awaitable[T]]
@@ -879,16 +858,18 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
                 "callback_path is required when send_identity_on_connect is False: "
                 "the default callback URL contains the instance name"
             )
+
         host = callback_host or self._callback_origin()
         callback_url = None
         if host:
-            host = host.rstrip("/")
-            callback_url = (
-                f"{host}/{callback_path.lstrip('/')}"
+            path = (
+                callback_path.lstrip("/")
                 if callback_path
-                else f"{host}/{agents_prefix}/"
-                f"{camel_case_to_kebab_case(type(self).__name__)}/{self.name}/callback"
+                else f"{agents_prefix}/{camel_case_to_kebab_case(type(self).__name__)}"
+                f"/{self.name}/callback"
             )
+            callback_url = f"{host.rstrip('/')}/{path}"
+
         return await manager.add_server(
             name,
             url,
@@ -968,8 +949,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
             self._mcp_broadcast_ready = True
             self._broadcast_protocol(self._mcp_servers_frame())
 
-    # Keep-alive
-
     async def keep_alive(self) -> Disposable:
         """Keep the agent in memory until the returned handle is disposed.
 
@@ -981,8 +960,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
     async def keep_alive_while[T](self, fn: Callable[[], Awaitable[T]]) -> T:
         """Run ``fn`` keeping the agent in memory, however ``fn`` ends."""
         return await self._keep_alive.keep_alive_while(fn)
-
-    # Teardown
 
     async def destroy(self) -> None:
         """Delete the agent: its storage, alarm, and connections.
@@ -1042,8 +1019,6 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
     async def __ensure_initialized(self) -> None:
         # Native RPC bypasses fetch; get_agent_by_name calls this first.
         await self._lifecycle.start()
-
-    # Connection handling (the root's sockets and forwarded ones)
 
     async def _connect_sequence(
         self, connection: Connection, ctx: ConnectionContext
@@ -1107,7 +1082,7 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         await self.on_close(connection, code, reason, was_clean)
 
     async def _after_connect_frames(self, connection: Connection) -> None:
-        """Send an SDK subclass's own connect frames, before ``on_connect``."""
+        pass  # SDK subclasses override this to send their own connect frames.
 
     async def _cleanup_route_prefix(self, prefix: str) -> None:
         await self._scheduler._cleanup_route_prefix(prefix)
@@ -1206,29 +1181,23 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
             path_from_json(path), method, list(args or [])
         )
 
-    # Internals
-
     async def _report_error(
         self, connection: Connection | None, error: Exception
     ) -> None:
-        """Tell ``on_error`` about an error it can't handle; never raises."""
         try:
             await self.on_error(connection, error)
         except Exception as raised:
             if raised is not error:
                 _log.exception("on_error failed")
 
-    def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
-        self._publish(event_type, payload)
-
     def _forward_event(self, event: LifecycleEvent) -> None:
-        self._publish(event.type, event.payload)
+        self._emit(event.type, event.payload)
 
-    def _publish(self, event_type: str, payload: Any) -> None:
-        # Telemetry never fails the work that emitted it.
+    def _emit(self, event_type: str, payload: Any) -> None:
         sink = self.observability
         if sink is None:
             return
+
         event = ObservabilityEvent(
             type=event_type,
             agent=self._lifecycle.class_name,
@@ -1236,6 +1205,7 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
             payload=payload,
             timestamp=datetime.now(UTC),
         )
+        # Telemetry never fails the work that emitted it.
         try:
             sink.emit(event)
         except Exception:
@@ -1248,23 +1218,17 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
 
 
 class _AgentState(State[Any]):
-    """State whose initial value is a fresh copy of the agent's ``initial_state``.
-
-    Read when first needed, so an ``initial_state`` set in ``__init__`` counts.
-    """
-
     def __init__(self, agent: Agent[Any], **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._agent = agent
 
+    # Read when first needed, so an initial_state set in __init__ counts.
     def _initial_value(self) -> Any:
         initial = self._agent.initial_state
         return json.loads(json.dumps(initial)) if initial is not None else None
 
 
 class _AgentHooks:
-    """The host hooks Lifecycle calls, with Agent's error policy around them."""
-
     __slots__ = ("_agent",)
 
     def __init__(self, agent: Agent[Any]) -> None:
@@ -1305,8 +1269,6 @@ class _AgentHooks:
 
 
 class _AgentConnectionHandlers:
-    """Agent's handlers for the root's sockets: forward, or handle locally."""
-
     __slots__ = ("_agent",)
 
     def __init__(self, agent: Agent[Any]) -> None:
@@ -1341,13 +1303,10 @@ class _AgentConnectionHandlers:
             await self._agent.on_error(connection, error)
 
 
+# Methods reached through native RPC bypass every SDK hook, so without this
+# get_current_agent() returns None there. Inside the agent's own context the
+# method runs as-is, keeping its connection and request.
 def _in_agent_context(method: FunctionType) -> Callable[..., Any]:
-    """Wrap a public agent method so it runs as the current agent.
-
-    Methods reached through native RPC bypass every SDK hook; this makes
-    ``get_current_agent()`` work there. Inside an existing context for the
-    same agent the method runs as-is, keeping its connection and request.
-    """
     if inspect.isasyncgenfunction(method):
 
         @functools.wraps(method)
