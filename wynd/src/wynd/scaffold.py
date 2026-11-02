@@ -6,7 +6,7 @@ from .console import info
 from .errors import WyndError
 from .project import load_project
 from .sources import PythonConfigParser, WranglerConfigParser
-from .targets import TARGETS
+from .targets import LATEST_TARGET
 from .typegen import write_env
 from .utils import read_text
 
@@ -64,40 +64,65 @@ IGNORED = (".venv/", ".wynd/")
 
 
 def scaffold(
-    directory: Path, sdk: str = "crosswind-workers", addons: tuple[str, ...] = ()
+    dir: Path,
+    sdk: str = "crosswind-workers",
+    additional_sdks: tuple[str, ...] = (),
 ) -> None:
-    """Write a new project on `sdk`, plus the `addons` from ADDONS, into
-    `directory`."""
-    name = re.sub(r"[^a-z0-9]+", "-", directory.resolve().name.lower()).strip("-")
-    name = name or "worker"
-    # The newest target's date, because the pinned Wrangler rejects later ones.
-    target = TARGETS[0]
-    dependencies = ", ".join(f'"{dist}"' for dist in [sdk, *map(ADDONS.get, addons)])
-    files = {
+    """Write a new project on `sdk`, plus the `additional_sdks` from ADDONS,
+    into `dir`."""
+    name = worker_name(dir)
+    files = project_files(name, sdk, additional_sdks)
+    refuse_existing_project(dir, files)
+    write_files(dir, files)
+    ignore(dir / ".gitignore")
+    if sdk == "crosswind-workers":
+        write_env(load_project(dir, None, None))
+    info(f"created {name}. Run `wynd dev` in {dir} to serve it.")
+
+
+def project_files(
+    name: str, sdk: str, additional_sdks: tuple[str, ...]
+) -> dict[str, str]:
+    """The text of each file a new project starts with, by path."""
+    distributions = [sdk] + [ADDONS[addon] for addon in additional_sdks]
+    dependencies = ", ".join(f'"{dist}"' for dist in distributions)
+    return {
         "pyproject.toml": PYPROJECT.format(
             name=name, dependencies=dependencies, wynd=version("wynd")
         ),
         # uv sync builds the editor's .venv on the target's Python.
-        ".python-version": f"{target.version}\n",
-        PythonConfigParser.names[0]: CONFIG.format(name=name, date=target.since),
+        ".python-version": f"{LATEST_TARGET.version}\n",
+        # The newest target's date, because the pinned Wrangler rejects later ones.
+        PythonConfigParser.names[0]: CONFIG.format(
+            name=name, date=LATEST_TARGET.since
+        ),
         "src/main.py": MAIN if sdk == "crosswind-workers" else STOCK_MAIN,
     }
 
+
+def refuse_existing_project(directory: Path, files: dict[str, str]) -> None:
+    """Raise WyndError if `directory` has a file that wynd init writes or
+    generates."""
     paths = [*files, *WranglerConfigParser.names, "src/env.py"]
-    existing = [path for path in dict.fromkeys(paths) if (directory / path).exists()]
+    existing = [path for path in paths if (directory / path).exists()]
     if existing:
         raise WyndError(
             f"{directory} already has {', '.join(existing)}. "
             "wynd init only writes a new project."
         )
 
+
+def write_files(directory: Path, files: dict[str, str]) -> None:
     for path, text in files.items():
         (directory / path).parent.mkdir(parents=True, exist_ok=True)
         (directory / path).write_text(text)
-    ignore(directory / ".gitignore")
-    if sdk == "crosswind-workers":
-        write_env(load_project(directory, None, None))
-    info(f"created {name}. Run `wynd dev` in {directory} to serve it.")
+
+
+def worker_name(directory: Path) -> str:
+    """The directory's name as lowercase words joined by hyphens, so
+    `My App_2` becomes `my-app-2`."""
+    words = re.findall(r"[a-z0-9]+", directory.resolve().name.lower())
+    return "-".join(words) or "worker"
 
 
 def ignore(path: Path) -> None:

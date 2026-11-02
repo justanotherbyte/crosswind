@@ -7,7 +7,7 @@ from .wrangler_config import WranglerConfig
 __all__ = ("Target", "select_target")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Target:
     version: str
     flag: str
@@ -20,30 +20,31 @@ class Target:
         return self.flag in flags or (self.since is not None and day >= self.since)
 
 
+# select_target returns the first match, so the newest Python comes first.
 TARGETS = (
     Target(
-        "3.14",
-        "python_workers_314",
-        date(2026, 9, 8),
-        "cpython-3.14.2-emscripten-wasm32-musl",
-        "https://index.pyodide.org/314.0.7",
+        version="3.14",
+        flag="python_workers_314",
+        since=date(2026, 9, 8),
+        interpreter="cpython-3.14.2-emscripten-wasm32-musl",
+        index="https://index.pyodide.org/314.0.7",
     ),
     Target(
-        "3.13",
-        "python_workers_20250116",
-        date(2025, 9, 29),
-        "cpython-3.13.2-emscripten-wasm32-musl",
-        "https://index.pyodide.org/0.28.3",
+        version="3.13",
+        flag="python_workers_20250116",
+        since=date(2025, 9, 29),
+        interpreter="cpython-3.13.2-emscripten-wasm32-musl",
+        index="https://index.pyodide.org/0.28.3",
     ),
     Target(
-        "3.12",
-        "python_workers",
-        None,
-        "cpython-3.12.7-emscripten-wasm32-musl",
-        "https://index.pyodide.org/0.27.7",
+        version="3.12",
+        flag="python_workers",
+        since=None,
+        interpreter="cpython-3.12.7-emscripten-wasm32-musl",
+        index="https://index.pyodide.org/0.27.7",
     ),
 )
-
+LATEST_TARGET = TARGETS[0]
 
 def select_target(config: WranglerConfig) -> Target:
     flags = config.compatibility_flags
