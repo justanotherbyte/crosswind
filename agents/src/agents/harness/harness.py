@@ -255,6 +255,11 @@ class Harness(LifecycleCapability):
                 f"Only unanswered operations can be retried; {operation_id!r} "
                 f"is {row.status}"
             )
+        # Its checkpoint predates the later turns; resuming it would drop them.
+        if self._store.ran_after(session, operation_id):
+            raise ValueError(
+                f"{operation_id!r} can't be retried after later operations ran"
+            )
 
         self._store.reopen(session, operation_id)
         self._events.publish(

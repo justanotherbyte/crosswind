@@ -184,6 +184,29 @@ def test_failing_turn_settles_unanswered_and_retry_resumes() -> None:
     asyncio.run(scenario())
 
 
+def test_retry_is_refused_after_a_later_operation_ran() -> None:
+    failures = [RuntimeError("model down")]
+
+    async def flaky(turn: Turn) -> TurnResult:
+        turn.save(b"step-1")
+        if failures:
+            raise failures.pop()
+
+        return await echo(turn)
+
+    _, harness, _ = setup(flaky)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.prompt("hi", operation_id="a")
+        assert (await session.prompt("next", operation_id="b")).status == "done"
+
+        with pytest.raises(ValueError, match="later operations"):
+            await session.retry("a")
+
+    asyncio.run(scenario())
+
+
 def test_needs_input_then_answers_as_a_new_operation() -> None:
     request = ToolRequest(id="call-1", name="delete", args={"id": 3}, kind="approval")
 

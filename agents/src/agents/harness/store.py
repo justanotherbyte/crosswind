@@ -296,6 +296,22 @@ class HarnessStore:
         )
         return bool(rows)
 
+    def ran_after(self, session: str, id: str) -> bool:
+        """Whether a later operation in the session has run or is running."""
+        rows = self.sql(
+            "SELECT 1 FROM cf_agents_harness_operations"
+            " WHERE harness = ? AND session = ?"
+            " AND status IN ('running', 'done', 'needs_input')"
+            " AND seq > (SELECT seq FROM cf_agents_harness_operations"
+            "   WHERE harness = ? AND session = ? AND id = ?) LIMIT 1",
+            self.harness,
+            session,
+            self.harness,
+            session,
+            id,
+        )
+        return bool(rows)
+
     def reopen(self, session: str, id: str) -> None:
         """Queue an unanswered operation again, resuming from its checkpoint."""
         self.sql(
