@@ -6,7 +6,7 @@ description: "What cf-agents does, how an Agent maps to a Durable Object, which 
 Write stateful, durable Agents in Python, deployed on Cloudflare. Orchestrate WebSockets, run scheduled and background work and stream LLM model responses.
 
 !!! note
-    This is a port of the official [Agents SDK](https://agents.cloudflare.com). Crosswind still aims to ship a harness similar to Project Think. If you'd like to help with this, please do contribute!
+    This is a port of the official [Agents SDK](https://agents.cloudflare.com). Crosswind ships a [Pydantic AI harness](pydantic-ai.md) and still aims to ship one similar to Project Think. If you'd like to help with this, please do contribute!
 
 ## Installation
 
@@ -101,6 +101,7 @@ or SQL, not in instance attributes.
 | Background work       | `queue()`, `@task` with durable steps, fibers              |
 | Chat                  | `AIChatAgent` with `on_chat_message`                       |
 | Sub-agents            | `self.dynamic_agents`, child agents with their own SQLite  |
+| Durable agent loops   | [`PydanticAIHarness`](pydantic-ai.md), [`Harness`](custom-harness.md), `@tool` |
 
 `AIChatAgent` doesn't call a model for you. You call any model client you
 like in `on_chat_message` and yield text or typed chunks.
@@ -125,3 +126,5 @@ official Cloudflare SDK. It ports `agents` v0.25.0 and the `AIChatAgent` from
 - [Getting started](getting-started.md) builds a counter agent and calls it
   over HTTP.
 - [Agent class](agent-class.md) lists every hook and method.
+- [Run a Pydantic AI agent](pydantic-ai.md) adds a model with tools that survives
+  a crash.

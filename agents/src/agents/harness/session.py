@@ -104,7 +104,7 @@ class HarnessSession:
         OperationNotFoundError
             If the session has no such operation.
         ValueError
-            If the operation isn't ``unanswered``.
+            If the operation isn't ``unanswered``, or a later one has run.
         """
         await self._harness._retry(self.id, operation_id)
 

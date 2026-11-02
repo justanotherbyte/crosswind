@@ -64,6 +64,8 @@ nav:
       - Run durable tasks: agents/tasks.md
       - Build a chat agent: agents/chat.md
       - Run a Pydantic AI agent: agents/pydantic-ai.md
+      - How a harness works: agents/harness.md
+      - Write your own harness: agents/custom-harness.md
       - Long-running work: agents/long-running-work.md
       - Use sub-agents: agents/sub-agents.md
       - Migrate from TypeScript: agents/coming-from-typescript.md

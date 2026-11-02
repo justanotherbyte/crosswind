@@ -1,9 +1,9 @@
 ---
 title: "Run a Pydantic AI agent in a Durable Object"
-description: "Install the Pydantic AI harness, give the model tools from your Agent class, approve tool calls, stream responses and resume after a crash."
+description: "Install the Pydantic AI harness, see which parts Pydantic AI runs, give the model tools, approve tool calls, stream responses and resume after a crash."
 ---
 
-`PydanticAIHarness` runs a [Pydantic AI](https://ai.pydantic.dev/) agent inside your Durable Object. It stores the conversation in SQLite, queues prompts and resumes a turn after a crash.
+`PydanticAIHarness` runs a [Pydantic AI](https://ai.pydantic.dev/) agent inside your Durable Object. It stores the conversation in SQLite, queues prompts and resumes a turn after a crash. [How a harness runs turns](harness.md) explains the operation statuses and the recovery steps.
 
 ## Installation
 
@@ -92,6 +92,49 @@ curl -d "Remember to buy milk" http://localhost:8787/agents/notes/demo
 - `self.use(...)` installs the harness. Call it in `__init__`, before the agent starts.
 - `prompt()` adds the prompt to the root session and waits for the result. The next prompt continues the same conversation.
 
+## Where Pydantic AI comes in
+
+Pydantic AI runs the agent loop. Crosswind makes that loop durable. `PydanticAIHarness` is the adapter between them, and each turn makes this call in `run_turn`:
+
+```python
+async with self.agent.iter(
+    prompt,                               # None when resuming or answering tool calls
+    message_history=messages,             # Loaded from the checkpoint, or else the history
+    deferred_tool_results=results,        # The client's answers and any interrupted calls
+    deps=self.target,
+    toolsets=[self._toolset],             # Your @tool methods
+    output_type=[str, DeferredToolRequests],
+) as run:
+    async for node in run:
+        if isinstance(node, ModelRequestNode | CallToolsNode):
+            await self._step(turn, run, node)  # Saves a checkpoint, then streams events
+```
+
+| Job                                                        | Who does it       |
+| ---------------------------------------------------------- | ----------------- |
+| Calling the model and deciding the next step               | Pydantic AI       |
+| Building tool schemas from signatures and docstrings       | Pydantic AI       |
+| Validating tool arguments and retrying on `ModelRetry`     | Pydantic AI       |
+| Running tools and pausing on approvals                     | Pydantic AI       |
+| The message format of the history and checkpoints          | Pydantic AI       |
+| Storing sessions, operations, history and checkpoints      | `Harness`         |
+| Queueing, dedupe, abort, retry and the wake job            | `Harness`         |
+| Deciding what happens to interrupted tool calls            | `PydanticAIHarness` |
+
+Each Crosswind type maps to one Pydantic AI type:
+
+| Crosswind                       | Pydantic AI                                               |
+| ------------------------------- | --------------------------------------------------------- |
+| `@tool` method                  | `Tool` in a `FunctionToolset`                             |
+| `ToolRequest`                   | An entry in `DeferredToolRequests.approvals` or `.calls`  |
+| `Approval`, `ToolOutput`        | An entry in `DeferredToolResults.approvals` or `.calls`   |
+| History and checkpoint bytes    | `ModelMessagesTypeAdapter` JSON                           |
+| `TextEvent`                     | `PartStartEvent` and `PartDeltaEvent` with text           |
+| `ToolCallEvent`                 | `FunctionToolCallEvent`                                   |
+| `ToolResultEvent`               | `FunctionToolResultEvent`                                 |
+
+The harness overrides `output_type` and `deps`, and adds your `@tool` methods to the agent's toolsets. Every other setting on `pydantic_ai.Agent` applies as usual, such as `model_settings`, `retries` and the agent's own tools.
+
 ## Use a plain Durable Object
 
 The harness doesn't need the `Agent` class. Install it on a `DurableObject` with `Lifecycle`:
@@ -143,6 +186,59 @@ The Wrangler config is the same as the quickstart's.
 - `self.lifecycle.sql` runs SQL on the object's database. There is no `self.state` here, because that comes from `Agent`.
 - `ask` is a normal RPC method. `prompt()` starts the Lifecycle if it hasn't started yet.
 
+## Add tools the harness doesn't own
+
+`@tool` methods are the usual choice. Register a tool on the Pydantic AI agent when it needs Pydantic AI's `RunContext`. `ctx.deps` is the harness target:
+
+```python
+import pydantic_ai
+from pydantic_ai import ModelRetry, RunContext
+
+agent = pydantic_ai.Agent("openai:gpt-5", instructions="You keep the user's notes.")
+
+
+@agent.tool
+async def count_notes(ctx: RunContext[object]) -> int:
+    """Count the saved notes."""
+    if not ctx.deps.state["notes"]:
+        raise ModelRetry("There are no notes yet. Ask the user to add one.")
+    return len(ctx.deps.state["notes"])
+```
+
+| What a tool does            | What happens                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Raises `ModelRetry`         | Pydantic AI sends the message to the model, and the turn continues              |
+| Raises any other exception  | The operation settles `unanswered`, with the error message as `result.reason`   |
+
+`@tool` methods don't receive a `RunContext`. They use `self` instead. A tool registered on the agent never runs again after a crash, because it has no `replay` setting.
+
+To have the client run a tool, declare it with Pydantic AI's `ExternalToolset`. The turn stops with a `kind="call"` request:
+
+```python
+import pydantic_ai
+from pydantic_ai import ExternalToolset
+from pydantic_ai.tools import ToolDefinition
+
+from agents import ToolOutput
+
+location = ToolDefinition(
+    name="get_location",
+    description="Return the user's city.",
+    parameters_json_schema={"type": "object", "properties": {}},
+)
+agent = pydantic_ai.Agent("openai:gpt-5", toolsets=[ExternalToolset([location])])
+
+
+async def ask_with_location(self, prompt: str) -> str | None:
+    result = await self.harness.prompt(prompt)
+
+    if result.status == "needs_input":
+        answers = [ToolOutput(id=request.id, value="Paris") for request in result.requests]
+        result = await self.harness.prompt(answers)
+
+    return result.text
+```
+
 ## Approve tool calls
 
 Set `requires_approval=True` to stop the turn before the tool runs:
@@ -168,7 +264,9 @@ async def clear_with_approval(self) -> str | None:
 
 - The turn settles with the status `needs_input`, and `result.requests` lists the tool calls.
 - Answer by submitting a list of `Approval`s. Pass `approved=False` and a `message` to tell the model why you refused.
-- A tool the model expects the client to run has `kind="call"`. Answer it with `ToolOutput(id=request.id, value=...)`.
+- A tool the client runs has `kind="call"`. Answer it with `ToolOutput(id=request.id, value=...)`.
+- Answer every request in one list. A partial list settles the new operation `unanswered`, and the requests stay open. Submit the full list to continue.
+- Answer before you send a new prompt. Otherwise the prompt settles `unanswered`. `session.reset()` clears the history if you want to drop the open calls instead.
 
 ## Stream a response
 
@@ -207,22 +305,31 @@ await branch.prompt("Now plan it without meetings")
 
 | Method                       | What it does                                    |
 | ---------------------------- | ----------------------------------------------- |
-| `harness.session(id)`        | Returns a handle on an existing session         |
+| `harness.session(id)`        | Returns a handle. The first submit creates the session, so `id` can be your own key, like `"user-42"` |
 | `harness.sessions.create()`  | Creates an empty session                        |
 | `harness.sessions.fork(id)`  | Creates a session with a copy of `id`'s history |
 | `harness.sessions.list()`    | Returns every session id, oldest first          |
 | `session.pending()`          | Returns the open operations, oldest first       |
 | `session.abort(id)`          | Stops one open operation, or all of them        |
-| `session.retry(id)`          | Runs an `unanswered` operation again            |
+| `session.retry(id)`          | Runs an `unanswered` operation again, unless a later one has run |
 | `session.reset()`            | Clears the history                              |
 
 Each session runs one turn at a time. New prompts queue behind open work, or raise `SessionBusyError` if you submit with `when_busy="reject"`.
 
 ## Recover from a crash
 
-The harness saves a checkpoint before each model request and each round of tool calls. After a crash, it resumes the turn from the last checkpoint.
+The harness saves a checkpoint, the Pydantic AI message list as JSON, before each model request and each round of tool calls. After a crash, it loads those messages and continues `agent.iter` from there. [How a crash recovers](harness.md#how-a-crash-recovers) covers what wakes the object.
 
-A tool call that was running when the crash happened may or may not have taken effect, so the default is not to run it again. Mark a tool as safe to repeat with `replay="safe"`:
+Where the crash lands decides what repeats:
+
+| The turn was in   | On resume                                                                  |
+| ----------------- | -------------------------------------------------------------------------- |
+| A model request   | Pydantic AI sends the request again, and text events repeat                |
+| A round of tools  | Each call in the round gets one of the outcomes in the next table          |
+
+A tool result isn't saved until the next model request's checkpoint. If a round has three calls and the crash lands during the third, all three count as interrupted, including the two that finished.
+
+A tool call that was running may or may not have taken effect, so the default is not to run it again. Mark a tool as safe to repeat with `replay="safe"`:
 
 ```python
 @tool(replay="safe")
@@ -231,30 +338,69 @@ async def search_notes(self, query: str) -> list[str]:
     return [note for note in self.state["notes"] if query in note]
 ```
 
-- `replay="safe"` runs an interrupted call again. A call that needs approval runs again only if the client approved it.
-- `replay="unsafe"`, the default, tells the model the call may not have finished and to check before calling the tool again.
+| The interrupted call                                 | On resume                                  |
+| ---------------------------------------------------- | ------------------------------------------ |
+| `replay="safe"`, no approval needed                  | Runs again                                 |
+| `replay="safe"`, the client approved it              | Runs again                                 |
+| `replay="safe"`, needs approval the client didn't give | Reported as interrupted                  |
+| `replay="unsafe"`, the default                       | Reported as interrupted                    |
+| The client denied it or sent a `ToolOutput`          | Keeps the client's answer                  |
+| Registered on the Pydantic AI agent                  | Reported as interrupted                    |
+
+"Reported as interrupted" means the model receives this text as the tool's result:
+
+```text
+The agent restarted while this tool call was running, so it may or may not have taken effect. Check its effect before calling the tool again.
+```
 
 Two constructor options control recovery:
 
 | Option         | Default | What it does                                                                                     |
 | -------------- | ------- | ------------------------------------------------------------------------------------------------ |
 | `max_restarts` | `5`     | How many times to resume a turn. After that, its operation settles `unanswered` with reason `"interrupted"`. |
-| `heartbeat`    | `30`    | Seconds between checks on a session with open work. This is the longest a turn waits to resume.  |
-
-## Operation statuses
-
-| Status        | Meaning                                                                 |
-| ------------- | ----------------------------------------------------------------------- |
-| `queued`      | Waiting for earlier work in the session                                 |
-| `running`     | The turn is running                                                     |
-| `done`        | Finished. `result.text` has the answer                                  |
-| `needs_input` | Stopped on tool calls. `result.requests` lists them                     |
-| `unanswered`  | The turn raised or ran out of restarts. `result.reason` says why        |
-| `aborted`     | `abort()` stopped it                                                    |
+| `heartbeat`    | `30`    | Seconds, or a `timedelta`, between checks on a session with open work. This is the longest a turn waits to resume. |
 
 ## Limitations
 
 - Output is always text or tool requests. The harness overrides the agent's `output_type`, so structured output doesn't work yet.
 - The harness always passes the target as `deps`. You can't override it yet.
+- Each turn uses Pydantic AI's default limit of 50 model requests, and you can't change it yet. Going over raises `UsageLimitExceeded`, and the operation settles `unanswered`.
 - `WorkersAIModel` accepts text and image prompts. It rejects documents, audio and video.
 - `WorkersAIModel`'s `clean_text` option doesn't run on streamed requests, and the harness always streams.
+
+## Troubleshooting
+
+`result.reason` holds the error when an operation settles `unanswered`.
+
+### Why does the reason say "Cannot provide a new user prompt when the message history contains unprocessed tool calls"?
+
+The session's last operation stopped at `needs_input`, and you sent a prompt instead of answers. Answer `result.requests`, or call `session.reset()` to clear the history.
+
+### Why does the reason say "Tool call results need to be provided for all deferred tool calls"?
+
+The answers don't cover every request, or an `id` doesn't match. Submit one answer per request in `result.requests`. The failed operation didn't change the history.
+
+### Why is the reason `interrupted`?
+
+The turn was interrupted more than `max_restarts` times. A turn that keeps dying is usually out of memory or hitting a limit. Fix the cause, then call `session.retry(id)`, which resets the count.
+
+### Why is the reason `out_of_memory`?
+
+The alarm hit the memory limit 3 times in a row. Cut what the turn holds in memory, then call `session.retry(id)`.
+
+### Why does `session.retry(id)` raise `ValueError: ... can't be retried after later operations ran`?
+
+A later operation in the session has run, so the old checkpoint would drop its turn. Send the prompt again as a new operation.
+
+### Why does `ImportError: agents.harness.pydantic_ai needs pydantic-ai-slim>=2.64` appear on Python 3.13 Workers?
+
+pywrangler's default index has an older version. Add the `extra-index-url` from [Installation](#installation) and run `pywrangler sync` again.
+
+### Why does a crashed turn only resume on the next prompt?
+
+On a plain Durable Object, `alarm` must call `self.lifecycle.alarm()`. `Agent` does this for you.
+
+## Next steps
+
+- [How a harness runs turns](harness.md) covers statuses, storage and what repeats after a crash.
+- [Write your own harness](custom-harness.md) runs another framework or your own loop.
