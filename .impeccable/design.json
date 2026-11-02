@@ -1,0 +1,445 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-02T15:17:38+00:00",
+  "title": "Design System: Crosswind",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Graphite Ground",
+        "canonical": "#191b1d",
+        "tonalRamp": [
+          "oklch(15% 0.0050 248.1)",
+          "oklch(26% 0.0050 248.1)",
+          "oklch(37% 0.0050 248.1)",
+          "oklch(48% 0.0050 248.1)",
+          "oklch(60% 0.0050 248.1)",
+          "oklch(71% 0.0050 248.1)",
+          "oklch(83% 0.0050 248.1)",
+          "oklch(95% 0.0050 248.1)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Panel Graphite",
+        "canonical": "#202225",
+        "tonalRamp": [
+          "oklch(15% 0.0064 258.4)",
+          "oklch(26% 0.0064 258.4)",
+          "oklch(37% 0.0064 258.4)",
+          "oklch(48% 0.0064 258.4)",
+          "oklch(60% 0.0064 258.4)",
+          "oklch(71% 0.0064 258.4)",
+          "oklch(83% 0.0064 258.4)",
+          "oklch(95% 0.0064 258.4)"
+        ]
+      },
+      "elevated": {
+        "role": "neutral",
+        "displayName": "Raised Graphite",
+        "canonical": "#282b2e",
+        "tonalRamp": [
+          "oklch(15% 0.0070 248.1)",
+          "oklch(26% 0.0070 248.1)",
+          "oklch(37% 0.0070 248.1)",
+          "oklch(48% 0.0070 248.1)",
+          "oklch(60% 0.0070 248.1)",
+          "oklch(71% 0.0070 248.1)",
+          "oklch(83% 0.0070 248.1)",
+          "oklch(95% 0.0070 248.1)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#34373b",
+        "tonalRamp": [
+          "oklch(15% 0.0081 255.6)",
+          "oklch(26% 0.0081 255.6)",
+          "oklch(37% 0.0081 255.6)",
+          "oklch(48% 0.0081 255.6)",
+          "oklch(60% 0.0081 255.6)",
+          "oklch(71% 0.0081 255.6)",
+          "oklch(83% 0.0081 255.6)",
+          "oklch(95% 0.0081 255.6)"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Hover Hairline",
+        "canonical": "#484c51",
+        "tonalRamp": [
+          "oklch(15% 0.0098 253.9)",
+          "oklch(26% 0.0098 253.9)",
+          "oklch(37% 0.0098 253.9)",
+          "oklch(48% 0.0098 253.9)",
+          "oklch(60% 0.0098 253.9)",
+          "oklch(71% 0.0098 253.9)",
+          "oklch(83% 0.0098 253.9)",
+          "oklch(95% 0.0098 253.9)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Soft White",
+        "canonical": "#e6e7e8",
+        "tonalRamp": [
+          "oklch(15% 0.0017 247.8)",
+          "oklch(26% 0.0017 247.8)",
+          "oklch(37% 0.0017 247.8)",
+          "oklch(48% 0.0017 247.8)",
+          "oklch(60% 0.0017 247.8)",
+          "oklch(71% 0.0017 247.8)",
+          "oklch(83% 0.0017 247.8)",
+          "oklch(95% 0.0017 247.8)"
+        ]
+      },
+      "text-2": {
+        "role": "neutral",
+        "displayName": "Secondary Grey",
+        "canonical": "#92979e",
+        "tonalRamp": [
+          "oklch(15% 0.0118 256.7)",
+          "oklch(26% 0.0118 256.7)",
+          "oklch(37% 0.0118 256.7)",
+          "oklch(48% 0.0118 256.7)",
+          "oklch(60% 0.0118 256.7)",
+          "oklch(71% 0.0118 256.7)",
+          "oklch(83% 0.0118 256.7)",
+          "oklch(95% 0.0118 256.7)"
+        ]
+      },
+      "label": {
+        "role": "neutral",
+        "displayName": "Label Grey",
+        "canonical": "#7f858c",
+        "tonalRamp": [
+          "oklch(15% 0.0127 252.2)",
+          "oklch(26% 0.0127 252.2)",
+          "oklch(37% 0.0127 252.2)",
+          "oklch(48% 0.0127 252.2)",
+          "oklch(60% 0.0127 252.2)",
+          "oklch(71% 0.0127 252.2)",
+          "oklch(83% 0.0127 252.2)",
+          "oklch(95% 0.0127 252.2)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Decoration Grey",
+        "canonical": "#686d74",
+        "tonalRamp": [
+          "oklch(15% 0.0125 256.7)",
+          "oklch(26% 0.0125 256.7)",
+          "oklch(37% 0.0125 256.7)",
+          "oklch(48% 0.0125 256.7)",
+          "oklch(60% 0.0125 256.7)",
+          "oklch(71% 0.0125 256.7)",
+          "oklch(83% 0.0125 256.7)",
+          "oklch(95% 0.0125 256.7)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Terminal Teal",
+        "canonical": "#67cdbb",
+        "tonalRamp": [
+          "oklch(15% 0.0995 180.6)",
+          "oklch(26% 0.0995 180.6)",
+          "oklch(37% 0.0995 180.6)",
+          "oklch(48% 0.0995 180.6)",
+          "oklch(60% 0.0995 180.6)",
+          "oklch(71% 0.0995 180.6)",
+          "oklch(83% 0.0995 180.6)",
+          "oklch(95% 0.0995 180.6)"
+        ]
+      },
+      "purple": {
+        "role": "secondary",
+        "displayName": "Muted Command Purple",
+        "canonical": "#a99fd6",
+        "tonalRamp": [
+          "oklch(15% 0.0794 292.7)",
+          "oklch(26% 0.0794 292.7)",
+          "oklch(37% 0.0794 292.7)",
+          "oklch(48% 0.0794 292.7)",
+          "oklch(60% 0.0794 292.7)",
+          "oklch(71% 0.0794 292.7)",
+          "oklch(83% 0.0794 292.7)",
+          "oklch(95% 0.0794 292.7)"
+        ]
+      },
+      "amber": {
+        "role": "tertiary",
+        "displayName": "Low-Saturation Amber",
+        "canonical": "#d0ae74",
+        "tonalRamp": [
+          "oklch(15% 0.0852 80.3)",
+          "oklch(26% 0.0852 80.3)",
+          "oklch(37% 0.0852 80.3)",
+          "oklch(48% 0.0852 80.3)",
+          "oklch(60% 0.0852 80.3)",
+          "oklch(71% 0.0852 80.3)",
+          "oklch(83% 0.0852 80.3)",
+          "oklch(95% 0.0852 80.3)"
+        ]
+      },
+      "code-function": {
+        "role": "neutral",
+        "displayName": "Pale Function Blue",
+        "canonical": "#b9d4e6",
+        "tonalRamp": [
+          "oklch(15% 0.0383 237.1)",
+          "oklch(26% 0.0383 237.1)",
+          "oklch(37% 0.0383 237.1)",
+          "oklch(48% 0.0383 237.1)",
+          "oklch(60% 0.0383 237.1)",
+          "oklch(71% 0.0383 237.1)",
+          "oklch(83% 0.0383 237.1)",
+          "oklch(95% 0.0383 237.1)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The home page heading only. 1.6rem at 960px wide and below."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The H1 of each doc page."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "H2 sections, each under a 1px top rule."
+      },
+      "subtitle": {
+        "displayName": "Subtitle",
+        "purpose": "H3, and the label column on home page sections."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose, capped at 72ch."
+      },
+      "chrome": {
+        "displayName": "Chrome",
+        "purpose": "Tabs, sidebar links, buttons and the search input."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Sidebar section names and small captions."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code panels and the command."
+      },
+      "mono-label": {
+        "displayName": "Mono label",
+        "purpose": "File names, callout labels and the copied toast."
+      },
+      "mono-micro": {
+        "displayName": "Mono micro",
+        "purpose": "Badges and keycaps."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 8px 24px rgb(0 0 0 / 28%)",
+        "purpose": "Open search, the copied toast and the diagram tooltip."
+      },
+      {
+        "name": "palette-contact",
+        "value": "0 1px 2px rgb(0 0 0 / 20%)",
+        "purpose": "The package palette at rest. The only resting shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "fast",
+        "value": "140ms",
+        "purpose": "Colour, border and background state changes."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Palette pane entry and diagram messages."
+      },
+      {
+        "name": "pane-in",
+        "value": "160ms",
+        "purpose": "Palette pane entry, with a 2px rise."
+      },
+      {
+        "name": "press",
+        "value": "120ms",
+        "purpose": "Opacity on button press and scale on the copy icon."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "diagram-compact",
+        "value": "720px"
+      },
+      {
+        "name": "tablet",
+        "value": "960px"
+      },
+      {
+        "name": "desktop",
+        "value": "1220px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main action in a group. A teal tint, never a solid fill.",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">Get started</a>",
+      "css": ".ds-btn-primary{display:inline-block;padding:5.6px 13px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-m);font:500 12.5px/1.45 \"Geist\", sans-serif;text-decoration:none;cursor:pointer;transition:background-color var(--cw-fast),border-color var(--cw-fast),color var(--cw-fast),opacity 120ms;border-color:color-mix(in srgb,var(--cw-accent) 42%,transparent);background:color-mix(in srgb,var(--cw-accent) 14%,var(--cw-bg));color:var(--cw-accent)} .ds-btn-primary:hover,.ds-btn-primary:focus-visible{border-color:color-mix(in srgb,var(--cw-accent) 70%,transparent);background:color-mix(in srgb,var(--cw-accent) 20%,var(--cw-bg))} .ds-btn-primary:focus-visible{outline:1px solid var(--cw-accent);outline-offset:2px} .ds-btn-primary:active{opacity:.75}"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Every other action.",
+      "html": "<a class=\"ds-btn\" href=\"#\">Browse docs</a>",
+      "css": ".ds-btn{display:inline-block;padding:5.6px 13px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-m);font:500 12.5px/1.45 \"Geist\", sans-serif;text-decoration:none;cursor:pointer;transition:background-color var(--cw-fast),border-color var(--cw-fast),color var(--cw-fast),opacity 120ms;background:var(--cw-surface);color:var(--cw-text)} .ds-btn:hover,.ds-btn:focus-visible{border-color:var(--cw-border-strong);background:var(--cw-elevated)} .ds-btn:focus-visible{outline:1px solid var(--cw-accent);outline-offset:2px} .ds-btn:active{opacity:.75}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Header search with its shortcut shown as a keycap. Ctrl K opens it as a command palette.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"4.5\"/><path d=\"m10.5 10.5 3 3\"/></svg><input type=\"text\" placeholder=\"Search\" aria-label=\"Search\"><kbd>Ctrl K</kbd></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:8px;width:220px;height:28px;padding:0 5px 0 7px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-m);background:var(--cw-surface);color:var(--cw-text-2);transition:border-color var(--cw-fast)} .ds-search:hover,.ds-search:focus-within{border-color:var(--cw-border-strong)} .ds-search svg{width:14px;height:14px;flex-shrink:0;fill:none;stroke:currentcolor;stroke-linecap:round;stroke-width:1.25} .ds-search input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--cw-text);caret-color:var(--cw-accent);font:400 12.5px \"Geist\", sans-serif} .ds-search input::placeholder{color:var(--cw-text-2)} .ds-search kbd{display:inline-block;min-width:17px;padding:0 3.6px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-s);background:var(--cw-elevated);color:var(--cw-text-2);font:400 10px/16px \"Geist Mono\", monospace;text-align:center}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Section label on the page ground, Secondary Grey links, a teal square in the gutter on the active link.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav__label\">Guides</span><a href=\"#\">Store and sync state</a><a href=\"#\" class=\"is-active\" aria-current=\"page\">Getting started</a><a href=\"#\">Connect clients</a></nav>",
+      "css": ".ds-nav{display:grid;gap:1px;width:220px;font:400 12.5px/1.35 \"Geist\", sans-serif} .ds-nav__label{padding:2px 14px;color:var(--cw-label);font-size:11px;font-weight:500} .ds-nav a{position:relative;padding:4px 8px 4px 14px;border-radius:var(--cw-radius-m);color:var(--cw-text-2);text-decoration:none;transition:color var(--cw-fast),background-color var(--cw-fast)} .ds-nav a:hover{background:var(--cw-surface);color:var(--cw-text)} .ds-nav a:focus-visible{outline:1px solid var(--cw-accent);outline-offset:2px} .ds-nav a.is-active{background:var(--cw-elevated);color:var(--cw-text);font-weight:500} .ds-nav a.is-active::before{content:\"\";position:absolute;top:calc(50% - 2.5px);left:4px;width:5px;height:5px;border-radius:1px;background:var(--cw-accent)}"
+    },
+    {
+      "name": "Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Compact outlined rectangle naming a package kind. Purple only for the CLI.",
+      "html": "<span class=\"ds-badge\">SDK</span> <span class=\"ds-badge ds-badge--cli\">CLI</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;padding:0 4px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-s);color:var(--cw-text-2);font:400 10px/16px \"Geist Mono\", monospace} .ds-badge--cli{border-color:color-mix(in srgb,var(--cw-purple) 34%,transparent);color:var(--cw-purple)}"
+    },
+    {
+      "name": "Code Panel",
+      "kind": "card",
+      "refersTo": "code-panel",
+      "description": "Real code in a bordered panel, with the file name in a raised title bar.",
+      "html": "<figure class=\"ds-code\"><figcaption>src/entry.py</figcaption><pre><code><span class=\"k\">class</span> <span class=\"f\">Counter</span>(Agent):\n    initial_state = {<span class=\"s\">\"count\"</span>: <span class=\"n\">0</span>}</code></pre></figure>",
+      "css": ".ds-code{overflow:hidden;margin:0;border:1px solid var(--cw-border);border-radius:var(--cw-radius-l);background:var(--cw-surface)} .ds-code figcaption{padding:6px 16px;border-bottom:1px solid var(--cw-border);background:var(--cw-elevated);color:var(--cw-text-2);font:400 11px/1.5 \"Geist Mono\", monospace} .ds-code pre{margin:0;padding:13px 16px;color:var(--cw-text);font:400 12.5px/1.6 \"Geist Mono\", monospace;font-variant-ligatures:none} .ds-code .k{color:var(--cw-purple)} .ds-code .s{color:var(--cw-accent)} .ds-code .n{color:var(--cw-amber)} .ds-code .f{color:#b9d4e6}"
+    },
+    {
+      "name": "Callout",
+      "kind": "card",
+      "refersTo": "callout",
+      "description": "Label left, text right, stacked on phones. Teal for notes, amber for warnings, red for danger.",
+      "html": "<aside class=\"ds-callout\"><p class=\"ds-callout__label\">Note</p><p>Python Workers run on Pyodide.</p></aside><aside class=\"ds-callout ds-callout--warn\"><p class=\"ds-callout__label\">Warning</p><p>Every package is alpha. Pin exact versions.</p></aside>",
+      "css": ".ds-callout{--c:var(--cw-accent);display:grid;grid-template-columns:72px minmax(0,1fr);margin:0 0 8px;padding:10px 14px;border:1px solid color-mix(in srgb,var(--c) 38%,var(--cw-border));border-radius:var(--cw-radius-l);background:color-mix(in srgb,var(--c) 7%,var(--cw-surface));color:var(--cw-text);font:400 14px/1.6 \"Geist\", sans-serif} .ds-callout p{margin:0} .ds-callout .ds-callout__label{display:flex;align-items:center;gap:5px;height:22px;color:var(--c);font:400 11px/1 \"Geist Mono\", monospace} .ds-callout__label::before{content:\"\";width:6px;height:6px;border-radius:1px;background:currentcolor} .ds-callout--warn{--c:var(--cw-amber)}"
+    },
+    {
+      "name": "Command",
+      "kind": "custom",
+      "refersTo": "command",
+      "description": "A copyable shell command in purple Geist Mono with an unselectable prompt.",
+      "html": "<div class=\"ds-command\"><code><span aria-hidden=\"true\">$ </span>uvx wynd init</code><button type=\"button\" aria-label=\"Copy the command uvx wynd init\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"/><path d=\"M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5\"/></svg></button></div>",
+      "css": ".ds-command{display:inline-flex;align-items:center;border:1px solid var(--cw-border);border-radius:var(--cw-radius-m);background:var(--cw-surface)} .ds-command code{padding:0 3px 0 11px;color:var(--cw-purple);font:400 12.5px \"Geist Mono\", monospace} .ds-command code span{color:var(--cw-muted);user-select:none} .ds-command button{display:grid;place-items:center;width:26px;height:26px;padding:0;border:0;border-radius:var(--cw-radius-m);background:none;color:var(--cw-text-2);cursor:pointer;transition:color var(--cw-fast),background-color var(--cw-fast)} .ds-command button:hover,.ds-command button:focus-visible{background:var(--cw-elevated);color:var(--cw-text)} .ds-command button:focus-visible{outline:1px solid var(--cw-accent);outline-offset:2px} .ds-command svg{width:14px;height:14px;fill:none;stroke:currentcolor;stroke-linecap:round;stroke-width:1.25;transition:transform 120ms} .ds-command button:active svg{transform:scale(.88)}"
+    },
+    {
+      "name": "Package Palette",
+      "kind": "custom",
+      "refersTo": "palette",
+      "description": "The signature component. Filter and arrow through packages, and the code preview swaps. Keycaps show the keys.",
+      "html": "<div class=\"ds-palette\"><label class=\"ds-palette__filter\"><svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"4.5\"/><path d=\"m10.5 10.5 3 3\"/></svg><input type=\"text\" placeholder=\"Filter packages\" aria-label=\"Filter packages\"></label><div class=\"ds-palette__rows\"><button type=\"button\" class=\"ds-row is-on\"><i></i><b>Agents</b><code>cf-agents</code><span class=\"ds-tag\">SDK</span></button><button type=\"button\" class=\"ds-row\"><i></i><b>Wynd</b><code>wynd</code><span class=\"ds-tag ds-tag--cli\">CLI</span></button></div><div class=\"ds-palette__hints\"><span><kbd>↑</kbd> <kbd>↓</kbd> preview</span><span><kbd>↵</kbd> open docs</span></div></div>",
+      "css": ".ds-palette{width:340px;overflow:hidden;border:1px solid var(--cw-border);border-radius:var(--cw-radius-xl);background:var(--cw-surface);box-shadow:0 1px 2px rgb(0 0 0 / 20%);font-family:\"Geist\", sans-serif} .ds-palette__filter{display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--cw-border);color:var(--cw-text-2);transition:color var(--cw-fast)} .ds-palette__filter:focus-within{color:var(--cw-accent)} .ds-palette__filter svg{width:14px;height:14px;flex-shrink:0;fill:none;stroke:currentcolor;stroke-linecap:round;stroke-width:1.25} .ds-palette__filter input{width:100%;height:40px;border:0;outline:0;background:none;color:var(--cw-text);caret-color:var(--cw-accent);font:400 13px \"Geist\", sans-serif} .ds-palette__filter input::placeholder{color:var(--cw-text-2)} .ds-palette__rows{display:grid;gap:1px;padding:6px} .ds-row{display:grid;grid-template-columns:6px auto minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;padding:7.6px 8px;border:0;border-radius:var(--cw-radius-m);background:none;color:var(--cw-text-2);font:400 13px \"Geist\", sans-serif;text-align:left;cursor:pointer;transition:color var(--cw-fast),background-color var(--cw-fast)} .ds-row:hover,.ds-row.is-on{background:var(--cw-elevated);color:var(--cw-text)} .ds-row:focus-visible{outline:1px solid var(--cw-accent);outline-offset:-1px} .ds-row i{display:inline-block;width:6px;height:6px;border-radius:1px;background:var(--cw-muted)} .ds-row.is-on i{background:var(--cw-accent)} .ds-row b{font-weight:500} .ds-row code{color:var(--cw-text-2);font:400 11px \"Geist Mono\", monospace} .ds-tag{padding:0 4px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-s);font:400 10px/16px \"Geist Mono\", monospace} .ds-tag--cli{border-color:color-mix(in srgb,var(--cw-purple) 34%,transparent);color:var(--cw-purple)} .ds-palette__hints{display:flex;gap:16px;padding:8px 14px;border-top:1px solid var(--cw-border);color:var(--cw-text-2);font-size:11px} .ds-palette__hints kbd{display:inline-block;min-width:17px;padding:0 3.6px;border:1px solid var(--cw-border);border-radius:var(--cw-radius-s);background:var(--cw-elevated);color:var(--cw-text-2);font:400 10px/16px \"Geist Mono\", monospace;text-align:center}"
+    },
+    {
+      "name": "Status Bar",
+      "kind": "custom",
+      "description": "The footer's last row. Alpha state on the left in Geist Mono with an amber square, links on the right.",
+      "html": "<div class=\"ds-status\"><span class=\"ds-status__state\"><i></i>alpha</span><span>Independent project. Not affiliated with Cloudflare.</span><span class=\"ds-status__end\"><a href=\"#\">Discord</a></span></div>",
+      "css": ".ds-status{display:flex;flex-wrap:wrap;align-items:center;gap:3px 16px;padding:7px 16px;border-top:1px solid var(--cw-border);background:var(--cw-bg);color:var(--cw-text-2);font:400 11px/1.5 \"Geist\", sans-serif} .ds-status__state{display:inline-flex;align-items:center;gap:5px;color:var(--cw-text);font-family:\"Geist Mono\", monospace} .ds-status__state i{display:inline-block;width:6px;height:6px;border-radius:1px;background:var(--cw-amber)} .ds-status__end{margin-left:auto} .ds-status a{color:var(--cw-text-2);transition:color var(--cw-fast)} .ds-status a:hover{color:var(--cw-text)} .ds-status a:focus-visible{outline:1px solid var(--cw-accent);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Native Utility",
+    "overview": "The docs behave like one developer tool that a reader already has open. Slim chrome, keyboard shortcuts shown as keycaps, a status bar for a footer, and search that opens as a command palette all come from native desktop tooling. Real code is the main visual material, and the home page previews it inside a package palette.\n\nThe system is dark only and dense. Three graphite steps and 1px borders carry all structure. Colour appears in small amounts, and each colour has a job. Tiny square markers show position and state, so no icon set or illustration is needed beyond the puffin logo in the header.\n\nThe world rejects the SaaS landing page, meaning a hero with a mascot and a grid of feature cards. The site runs on MkDocs Material, and every token maps onto Material's variables, so generated API pages inherit the same look.",
+    "keyCharacteristics": [
+      "Dark only, with no theme toggle.",
+      "Geist for text and chrome, Geist Mono for anything a developer would type or read as a machine value.",
+      "1px borders and tonal steps instead of shadows at rest.",
+      "Square markers, compact rectangular badges and keycaps.",
+      "A 140ms state transition on almost every interactive element."
+    ],
+    "rules": [
+      {
+        "name": "The Label Ground Rule",
+        "body": "Label Grey sits on Graphite Ground only. Small text on a panel or a raised step uses Secondary Grey, because Label Grey drops below 4.5:1 there.",
+        "section": "colors"
+      },
+      {
+        "name": "The Decoration Rule",
+        "body": "Decoration Grey never carries information a reader needs to read. If removing it would lose meaning, the element needs Secondary Grey.",
+        "section": "colors"
+      },
+      {
+        "name": "The Purple Rule",
+        "body": "Purple means a command, the CLI, or a Python keyword. Links and buttons stay teal or neutral.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Rule",
+        "body": "Geist Mono is for code, commands, shortcuts, statuses and identifiers. Everything else, including every label a person wrote, is Geist.",
+        "section": "typography"
+      },
+      {
+        "name": "The Root Rule",
+        "body": "The html element is pinned at 125%, which is 20px at the browser default, and Material's wide-screen growth is off. So .05rem is 1px, and every rem value in this file assumes that root.",
+        "section": "typography"
+      },
+      {
+        "name": "The Float Rule",
+        "body": "A shadow means the element sits above the page. Panels in the document flow, including the header, stay flat.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Square Rule",
+        "body": "State is marked with a tiny square, not a dot, stripe or icon. Teal is current, Decoration Grey is idle, amber is a warning or alpha status.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do keep the page dark, using only the three graphite steps for grounds.",
+      "Do use 1px Hairline borders (#34373b) and thin rules to separate things.",
+      "Do set commands, shortcuts, statuses, package names and file names in Geist Mono.",
+      "Do mark the current item with a 5px or 6px teal square.",
+      "Do show a keycap only when the shortcut works.",
+      "Do write rem values against the 20px root, where .05rem is 1px.",
+      "Do use Secondary Grey (#92979e) for small text on Panel Graphite or Raised Graphite.",
+      "Do map new colours through the `--cw-*` tokens and Material's `--md-*` variables, so generated API pages inherit them."
+    ],
+    "donts": [
+      "Don't add a light theme or a theme toggle.",
+      "Don't build a hero with a mascot or a grid of feature cards. The puffin stays in the header as the logo.",
+      "Don't use Decoration Grey (#686d74) for text a reader needs.",
+      "Don't put Label Grey (#7f858c) on Panel Graphite or Raised Graphite.",
+      "Don't use purple for links, buttons or general emphasis.",
+      "Don't raise amber's saturation, or use it for anything other than warnings, alpha status and syntax values.",
+      "Don't divide page sections with background bands.",
+      "Don't put a shadow on a panel in the document flow, other than the palette's contact shadow.",
+      "Don't set uppercase or tracked labels in HTML chrome.",
+      "Don't use radii above 10px, or pill shapes."
+    ]
+  }
+}

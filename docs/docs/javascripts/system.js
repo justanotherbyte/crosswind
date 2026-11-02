@@ -19,19 +19,19 @@
 
   const MODULES = {
     agents: {
-      n: "01", name: "Agents", pkg: "cf-agents", href: "agents/overview/",
+      name: "Agents", pkg: "cf-agents", href: "agents/overview/",
       desc: "Stateful agents with WebSocket clients, schedules, durable tasks and streaming chat.",
     },
     workers: {
-      n: "02", name: "Workers", pkg: "crosswind-workers", href: "workers/overview/",
+      name: "Workers", pkg: "crosswind-workers", href: "workers/overview/",
       desc: "Typed replacement for the workers package, with typed bindings, requests and Durable Objects.",
     },
     containers: {
-      n: "03", name: "Containers", pkg: "containers-py", href: "containers/overview/",
+      name: "Containers", pkg: "containers-py", href: "containers/overview/",
       desc: "Start, stop and route requests to Cloudflare Containers, and filter their outbound traffic.",
     },
     wynd: {
-      n: "04", name: "Wynd", pkg: "wynd", href: "wynd/overview/",
+      name: "Wynd", pkg: "wynd", href: "wynd/overview/",
       desc: "Replaces pywrangler. Before each upload it drops vendored files your Worker never imports.",
     },
   };
@@ -348,7 +348,6 @@
       const [lx, ly] = iso(corner);
       const [dx, dy, anchor] = side ? [-14, -4, "end"] : [0, 22, "middle"];
       const t1 = make(name, "text", { x: r1(lx + dx), y: r1(ly + dy), class: "t b", "text-anchor": anchor });
-      make(t1, "tspan", { class: "num" }).textContent = m.n + " ";
       t1.append(m.name.toUpperCase());
       label(name, corner, m.pkg, "m", dx, dy + 14, anchor);
       assemble(pad, ASSEMBLE_AT(key), 0.5);

@@ -60,12 +60,11 @@ characters, so `*.example.com`, `api.*.com` and `goo*gle` are all valid.
 container needs both. The SDK ignores a trailing dot on the hostname. Blocked
 requests get a `520` response with the body `Origin is disallowed`.
 
-> **Note**
->
-> Host lists apply to HTTP traffic, and to HTTPS once
-> [HTTPS interception](#https) is on. See the
-> [platform docs](https://developers.cloudflare.com/containers/configuration/outbound-traffic/)
-> for how the platform handles other ports and protocols.
+!!! note
+    Host lists apply to HTTP traffic, and to HTTPS once
+    [HTTPS interception](#https) is on. See the
+    [platform docs](https://developers.cloudflare.com/containers/configuration/outbound-traffic/)
+    for how the platform handles other ports and protocols.
 
 ## Outbound handlers
 
@@ -332,10 +331,9 @@ rule that applies decides what happens:
    `allowed_hosts` or `enable_internet` is `True`. Otherwise the SDK blocks
    it.
 
-> **Note**
->
-> If your only rules are class-level `outbound_by_host` entries, only requests
-> to those hosts go through `ContainerProxy`. Anything else, such as a
-> catch-all, a host list or any runtime change, routes all of the
-> container's HTTP traffic through it. That stays in place until the container
-> restarts.
+!!! note
+    If your only rules are class-level `outbound_by_host` entries, only requests
+    to those hosts go through `ContainerProxy`. Anything else, such as a
+    catch-all, a host list or any runtime change, routes all of the
+    container's HTTP traffic through it. That stays in place until the container
+    restarts.
