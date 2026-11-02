@@ -169,9 +169,9 @@ def json_type(value: Any) -> str:
     if isinstance(value, dict):
         return f"dict[str, {common_type(value.values())}]"
 
-    return {bool: "bool", int: "int", float: "float", str: "str"}.get(
-        type(value), "Any"
-    )
+    json_type_map = {bool: "bool", int: "int", float: "float", str: "str"}
+
+    return json_type_map.get(type(value), "Any")
 
 
 def common_type(values: Iterable[Any]) -> str:
@@ -181,15 +181,22 @@ def common_type(values: Iterable[Any]) -> str:
 
 def _import(module: str, names: Iterable[str], indent: str = "") -> str:
     """An import statement as ruff's isort and formatter write it."""
-    # Constants, then classes, then the rest, as isort's order-by-type does.
-    names = sorted(
-        names,
-        key=lambda n: (0 if n.isupper() else 1 if n[0].isupper() else 2, n.lower()),
-    )
 
-    line = f"{indent}from {module} import {', '.join(names)}"
-    if len(line) <= 88:
-        return line
+    def isort_order(name: str) -> tuple[int, str]:
+        """Constants, then classes, then the rest, as isort's order-by-type does."""
+        if name.isupper():
+            kind = 0
+        elif name[0].isupper():
+            kind = 1
+        else:
+            kind = 2
+        return kind, name.lower()
 
-    body = "".join(f"{indent}    {name},\n" for name in names)
-    return f"{indent}from {module} import (\n{body}{indent})"
+    names = sorted(names, key=isort_order)
+
+    one_line = f"{indent}from {module} import {', '.join(names)}"
+    if len(one_line) <= 88:  # ruff's default line length
+        return one_line
+
+    one_name_per_line = "".join(f"{indent}    {name},\n" for name in names)
+    return f"{indent}from {module} import (\n{one_name_per_line}{indent})"

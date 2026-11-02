@@ -46,6 +46,7 @@ TARGETS = (
 )
 LATEST_TARGET = TARGETS[0]
 
+
 def select_target(config: WranglerConfig) -> Target:
     flags = config.compatibility_flags
     found = (

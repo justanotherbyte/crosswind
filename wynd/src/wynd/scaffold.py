@@ -93,9 +93,7 @@ def project_files(
         # uv sync builds the editor's .venv on the target's Python.
         ".python-version": f"{LATEST_TARGET.version}\n",
         # The newest target's date, because the pinned Wrangler rejects later ones.
-        PythonConfigParser.names[0]: CONFIG.format(
-            name=name, date=LATEST_TARGET.since
-        ),
+        PythonConfigParser.names[0]: CONFIG.format(name=name, date=LATEST_TARGET.since),
         "src/main.py": MAIN if sdk == "crosswind-workers" else STOCK_MAIN,
     }
 
