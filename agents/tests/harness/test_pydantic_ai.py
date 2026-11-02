@@ -111,7 +111,7 @@ def test_the_targets_tools_run_and_stream_events() -> None:
         assert seen[2] == ToolCallEvent(
             operation_id="op", tool_call_id="call-0", name="add", args={"text": "milk"}
         )
-        assert seen[4] == TextEvent(operation_id="op", delta="add=added milk")
+        assert seen[4] == TextEvent(operation_id="op", text="add=added milk")
         assert seen[5] == OperationEvent(operation_id="op", status="done")
 
     asyncio.run(scenario())

@@ -78,8 +78,8 @@ def test_a_tool_round_trip_through_the_harness() -> None:
         in seen
     )
     assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", delta="You have"),
-        TextEvent(operation_id="op", delta=" milk."),
+        TextEvent(operation_id="op", text="You have"),
+        TextEvent(operation_id="op", text=" milk."),
     ]
     first, second = (payload for _, payload in ai.calls)
     assert first["stream"] is True
@@ -170,7 +170,7 @@ def test_a_streamed_qwen_turn_keeps_reasoning_and_skips_blank_text() -> None:
     seen = asyncio.run(scenario())
 
     assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", delta="You have milk.")
+        TextEvent(operation_id="op", text="You have milk.")
     ]
     tool_turn = ai.calls[1][1]["messages"][-2]
     assert tool_turn["content"] == ""
@@ -245,7 +245,7 @@ def test_streamed_blank_lines_skip_events_output_and_history() -> None:
     seen = asyncio.run(scenario())
 
     assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", delta="Sunny.")
+        TextEvent(operation_id="op", text="Sunny.")
     ]
     assert {"role": "assistant", "content": "Sunny."} in ai.calls[1][1]["messages"]
 

@@ -143,7 +143,7 @@ class TextEvent:
     """Model text streamed during a turn."""
 
     operation_id: str
-    delta: str
+    text: str
     type: Literal["text"] = "text"
 
 

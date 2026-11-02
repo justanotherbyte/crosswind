@@ -172,28 +172,25 @@ async def clear_with_approval(self) -> str | None:
 
 ## Stream a response
 
-`watch()` yields events as the turn runs:
+`stream()` submits a prompt and yields its events as the turn runs:
 
 ```python
-from agents import OperationEvent, TextEvent
+from agents import TextEvent
 
-async def stream(self, prompt: str) -> None:
+async def ask_and_broadcast(self, message_id: str, prompt: str) -> None:
     session = self.harness.session()
-    receipt = await session.submit(prompt)
 
-    async for event in session.watch():
-        match event:
-            case TextEvent(delta=delta):
-                self.broadcast(delta)
-            case OperationEvent(operation_id=receipt.operation_id, status=status) if (
-                status not in ("queued", "running")
-            ):
-                break
+    async for event in session.stream(prompt, operation_id=message_id):
+        if isinstance(event, TextEvent):
+            self.broadcast(event.text)
+
+    result = await session.wait(message_id)
 ```
 
-- `submit()` stores the prompt and returns before the turn runs. Pass your own `operation_id` to dedupe retries.
-- `watch()` first yields a `SessionSnapshot`, then `OperationEvent`, `TextEvent`, `ToolCallEvent` and `ToolResultEvent`.
-- `watch()` never ends by itself, so break when your operation settles.
+- `stream()` yields `OperationEvent`, `TextEvent`, `ToolCallEvent` and `ToolResultEvent` for this operation, and ends when it settles.
+- `operation_id` dedupes retries. Resubmitting an open operation follows it, and resubmitting a settled one yields nothing.
+- `wait()` returns the final result, including any tool requests.
+- `watch()` follows the whole session instead. It first yields a `SessionSnapshot` and never ends by itself.
 - The harness doesn't store events. A client that reconnects doesn't get the text it missed.
 
 ## Keep separate conversations
