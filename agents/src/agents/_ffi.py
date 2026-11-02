@@ -8,6 +8,8 @@ they go through `py_to_js` / `js_to_py`. Native DO RPC goes through the Workers
 SDK's own converters, wrapped by `to_rpc` / `from_rpc`.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from collections.abc import (
@@ -66,6 +68,7 @@ __all__ = (
     "proxies",
     "py_to_js",
     "read_attachment",
+    "read_stream",
     "request_with",
     "send_message",
     "streaming_response",
@@ -340,16 +343,35 @@ class FetchResponse:
         if body is None:
             return
         self._reader = reader = body.getReader()
-        while True:
-            result = await reader.read()
-            if result.done:
-                return
-            yield result.value.to_bytes()
+        async for chunk in _read(reader):
+            yield chunk
 
     async def _cancel(self) -> None:
         if self._reader is not None:
             with suppress(JsException):  # rejected once the stream has errored
                 await self._reader.cancel()
+
+
+@asynccontextmanager
+async def read_stream(stream: JsProxy) -> AsyncGenerator[AsyncIterator[bytes]]:
+    """Read a JS ``ReadableStream``'s chunks as they arrive.
+
+    Leaving the block before the stream ends cancels the stream.
+    """
+    reader = stream.getReader()
+    try:
+        yield _read(reader)
+    finally:
+        with suppress(JsException):
+            await reader.cancel()
+
+
+async def _read(reader: JsProxy) -> AsyncIterator[bytes]:
+    while True:
+        result = await reader.read()
+        if result.done:
+            return
+        yield result.value.to_bytes()
 
 
 @asynccontextmanager
