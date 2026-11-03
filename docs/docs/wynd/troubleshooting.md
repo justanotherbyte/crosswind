@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot Wynd errors"
-description: "Causes and fixes for Wynd errors: missing config or SDK, cloudflare.config.py errors, missing uv, Python target errors, uv install failures, staging and path errors, and refused Wrangler flags."
+description: "Causes and fixes for Wynd errors: missing config or SDK, cloudflare.config.py errors, missing uv, Python target errors, uv install failures, staging and path errors, refused Wrangler flags, a config with no main, and Wynd's staging warnings."
 ---
 
 Wynd's own errors start with `wynd: error:` and stop the command before
@@ -9,7 +9,7 @@ pruning are on [Prune the upload](pruning.md#troubleshooting), errors
 from `wynd types` are on
 [Generate typed bindings](types.md#troubleshooting), and each error that
 `cloudflare.config.py` can raise is on
-[Write config in Python](python-config.md#errors).
+[cloudflare.config.py reference](config-reference.md#errors).
 
 ## `no config (cloudflare.config.py, wrangler.json, wrangler.jsonc, wrangler.toml) found`
 
@@ -44,8 +44,8 @@ comes from one object, such as a malformed `compatibility_date`. A list under
 `has errors:` comes from rules across objects, such as a binding to a class
 missing from `exports`.
 
-**Fix.** See [Write config in Python](python-config.md#errors) for each
-message and the change that triggers it.
+**Fix.** See the [cloudflare.config.py reference](config-reference.md#errors)
+for each message and the change that triggers it.
 
 ## `already has <files>. wynd init only writes a new project.`
 
@@ -166,3 +166,54 @@ the config's `env` section.
 
 **Fix.** Check the name, and check that `CLOUDFLARE_ENV` isn't set from
 another project.
+
+## `sets no main`
+
+```text
+wynd: error: cloudflare.config.py sets no main
+```
+
+**Cause.** The config has no `main`, as when a `cloudflare.config.py` sets
+`entrypoint=None` for a Worker that only serves static assets. Wynd needs the
+entry module to stage the source for an upload and to place the generated
+`env.py`. The upload commands stop with this error on any project, and
+`wynd dev` and `wynd types` stop with it on crosswind-workers projects.
+Passthrough commands and `wynd dev` on workers-runtime-sdk still run.
+
+**Fix.** Set `main`, or `entrypoint` in `cloudflare.config.py`, to a module
+in a subdirectory such as `src/main.py`. A Worker with an entry module still
+serves the directory in `assets`.
+
+## `Wrangler changed <keys> in <path>, which Wynd replaces on its next run`
+
+This is a warning, and the command still runs:
+
+```text
+wynd: warning: Wrangler changed d1_databases in /home/you/hello/.wynd/run/wrangler.jsonc.json, which Wynd replaces on its next run. Copy the change into wrangler.jsonc.
+```
+
+**Cause.** Wrangler edited the staged copy of your config that it ran on.
+Some commands do this, such as `wynd d1 create` adding a binding. Wynd
+rewrites the staged copy from your config on every run, so the edit would be
+lost.
+
+**Fix.** Copy the change it names into your own config. For a
+`cloudflare.config.py`, write it as the matching binding from
+`wynd.config.bindings`.
+
+## `local D1, KV and R2 data now lives in <path>`
+
+This is a warning, and the command still runs:
+
+```text
+wynd: warning: local D1, KV and R2 data now lives in /home/you/hello/.wynd/run/.wrangler/state. Move the contents of /home/you/hello/.wrangler/state there to keep it.
+```
+
+**Cause.** A `.wrangler/state/` directory sits beside your config, from runs
+of Wrangler or pywrangler before Wynd. Wrangler keeps local data beside the
+config it reads, and under Wynd that's the staged copy in `.wynd/run/`, as
+[Where Wynd keeps files](commands.md#where-wynd-keeps-files) describes. Wynd
+creates the new directory empty, so the warning shows once.
+
+**Fix.** To keep the old local data, move the contents of the old directory
+into the new one before the next `wynd dev`. Otherwise delete the old one.

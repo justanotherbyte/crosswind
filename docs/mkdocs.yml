@@ -129,10 +129,14 @@ nav:
     - Switch from pywrangler: wynd/getting-started.md
     - Guides:
       - Write config in Python: wynd/python-config.md
+      - Run several Workers in one project: wynd/multiple-workers.md
       - Prune the upload: wynd/pruning.md
       - Generate typed bindings: wynd/types.md
+    - Concepts:
+      - How Wynd builds a Worker: wynd/architecture.md
     - Reference:
       - Commands and configuration: wynd/commands.md
+      - cloudflare.config.py reference: wynd/config-reference.md
       - Generated API: wynd/generated-api.md
       - Troubleshooting: wynd/troubleshooting.md
 validation:
