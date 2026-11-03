@@ -3,7 +3,8 @@
 ``golden/transcript_records.json`` holds every record in upstream's wire form,
 written from ``experimental/channels/protocol.ts``. ``golden/apply_chunks.json``
 holds upstream's ``apply-chunks.test.ts`` case plus more, with ``expected``
-produced by upstream's ``applyChunks`` (``golden/tools/gen.mjs``).
+produced by upstream's ``applyChunks``: ``golden/tools/gen.mjs`` imports it
+from a cloudflare/agents checkout at 455b47e.
 """
 
 import json
