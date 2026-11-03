@@ -36,6 +36,7 @@ design evolves. This index lists where to look.
 | [mcp_upstream_usage.md](./mcp_upstream_usage.md) | **Reference.** Cloudflare's recommended MCP usage in the TypeScript Agents SDK (client, OAuth, elicitation, `createMcpHandler`), and where our plan differs |
 | [mcp_engine.md](./mcp_engine.md) | **Decided; built.** MCP internals: our own Streamable HTTP client in both protocol eras, the connection state machine, restore, storage, the OAuth flow split across requests, the SDK-backed server handler, tests |
 | [platform_verification.md](./platform_verification.md) | Results of running the "to verify" items on the Python Workers runtime |
+| [harness_transcript.md](./harness_transcript.md) | **Decided; built.** The harness's native transcript: inputs, events, the `Turn` / `TurnResult` contract, ids and grouping, storage, the `PydanticAIHarness` mapping |
 | [observability.md](./observability.md) | Structured events: upstream pipeline, in-scope events, Python design |
 
 ## Where the open decisions are
