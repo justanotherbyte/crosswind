@@ -1,0 +1,342 @@
+{
+  "source": {
+    "repository": "cloudflare/agents",
+    "commit": "455b47ec93f99f306f644ac06bc8b72b0627c1fc",
+    "files": [
+      "packages/agents/src/tests/channels/conversations.test.ts",
+      "packages/agents/src/experimental/channels/__tests__/web-client.test.ts"
+    ],
+    "note": "Frames copied from the upstream tests at the pinned commit; ids upstream generates at run time (response ids, request ids) are fixed. Update together with the pin (channels.md section 8 item 9)."
+  },
+  "client": {
+    "message": {
+      "type": "channels:event",
+      "event": {
+        "type": "message",
+        "eventId": "e1",
+        "message": {
+          "id": "e1",
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      }
+    },
+    "message-with-forged-participant": {
+      "type": "channels:event",
+      "event": {
+        "type": "message",
+        "eventId": "e1",
+        "message": {
+          "id": "m1",
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        },
+        "participant": {
+          "id": "mallory"
+        }
+      }
+    },
+    "cancel": {
+      "type": "channels:event",
+      "event": {
+        "type": "cancel",
+        "eventId": "c1",
+        "turnId": "e1"
+      }
+    },
+    "conversation-reset": {
+      "type": "channels:event",
+      "event": {
+        "type": "conversation-reset",
+        "eventId": "r1",
+        "handoff": "note"
+      }
+    },
+    "conversation-fork": {
+      "type": "channels:event",
+      "event": {
+        "type": "conversation-fork",
+        "eventId": "e1"
+      }
+    },
+    "subscribe": {
+      "type": "channels:subscribe",
+      "responseId": "r1"
+    },
+    "list-conversations": {
+      "type": "channels:list-conversations",
+      "requestId": "r1"
+    }
+  },
+  "invalid": {
+    "message-without-id": {
+      "frame": {
+        "type": "channels:event",
+        "event": {
+          "type": "message",
+          "eventId": "e2",
+          "message": {
+            "role": "user"
+          }
+        }
+      },
+      "ack": {
+        "type": "channels:ack",
+        "conversationId": "default",
+        "eventId": "e2",
+        "error": "Invalid frame: message.id"
+      }
+    },
+    "list-without-request-id": {
+      "frame": {
+        "type": "channels:list-conversations"
+      },
+      "ack": {
+        "type": "channels:ack",
+        "conversationId": "default",
+        "eventId": "",
+        "error": "Invalid frame: requestId"
+      }
+    }
+  },
+  "server": {
+    "snapshot": {
+      "type": "channels:snapshot",
+      "conversationId": "default",
+      "you": {
+        "id": "alice"
+      },
+      "operations": [
+        "conversation-create",
+        "conversation-fork",
+        "conversation-reset"
+      ],
+      "messages": [
+        {
+          "id": "m1",
+          "role": "user",
+          "parts": []
+        }
+      ],
+      "turns": [
+        {
+          "turnId": "t1",
+          "startedBy": "t1",
+          "status": "queued"
+        }
+      ]
+    },
+    "snapshot-client": {
+      "type": "channels:snapshot",
+      "conversationId": "main",
+      "you": {
+        "id": "alice"
+      },
+      "operations": [
+        "conversation-create"
+      ],
+      "messages": [],
+      "turns": []
+    },
+    "ack": {
+      "type": "channels:ack",
+      "conversationId": "default",
+      "eventId": "e1"
+    },
+    "ack-rejected": {
+      "type": "channels:ack",
+      "conversationId": "default",
+      "eventId": "e2",
+      "error": "Event rejected"
+    },
+    "ack-fork": {
+      "type": "channels:ack",
+      "conversationId": "s1",
+      "eventId": "e1"
+    },
+    "messages": {
+      "type": "channels:messages",
+      "conversationId": "default",
+      "messages": [
+        {
+          "id": "e1",
+          "role": "user",
+          "parts": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    },
+    "chunks": {
+      "type": "channels:chunks",
+      "conversationId": "default",
+      "responseId": "r1",
+      "from": 0,
+      "chunks": [
+        {
+          "type": "text-start",
+          "id": "a"
+        },
+        {
+          "type": "text-delta",
+          "id": "a",
+          "delta": "He"
+        }
+      ]
+    },
+    "chunks-live": {
+      "type": "channels:chunks",
+      "conversationId": "default",
+      "responseId": "r1",
+      "from": 2,
+      "chunks": [
+        {
+          "type": "text-delta",
+          "id": "a",
+          "delta": "y"
+        }
+      ]
+    },
+    "caught-up": {
+      "type": "channels:caught-up",
+      "conversationId": "default",
+      "responseId": "r1",
+      "cursor": 2
+    },
+    "end-ended": {
+      "type": "channels:end",
+      "conversationId": "default",
+      "responseId": "r1",
+      "state": "ended"
+    },
+    "end-interrupted": {
+      "type": "channels:end",
+      "conversationId": "default",
+      "responseId": "r1",
+      "state": "interrupted"
+    },
+    "end-not-found": {
+      "type": "channels:end",
+      "conversationId": "default",
+      "responseId": "r1",
+      "state": "not-found"
+    },
+    "turn-failed": {
+      "type": "channels:turn",
+      "conversationId": "default",
+      "turn": {
+        "turnId": "e1",
+        "startedBy": "e1",
+        "status": "settled",
+        "outcome": "failed",
+        "messageIds": [],
+        "error": "Not answered: boom"
+      }
+    },
+    "conversations-answer": {
+      "type": "channels:conversations",
+      "conversationId": "default",
+      "requestId": "r1",
+      "conversations": [
+        {
+          "id": "default",
+          "busy": false
+        }
+      ]
+    },
+    "conversations-pushed": {
+      "type": "channels:conversations",
+      "conversationId": "s1",
+      "conversations": [
+        {
+          "id": "default",
+          "busy": false
+        },
+        {
+          "id": "s1",
+          "parent": "default",
+          "busy": false
+        }
+      ]
+    },
+    "conversations-client": {
+      "type": "channels:conversations",
+      "conversationId": "main",
+      "requestId": "q1",
+      "conversations": [
+        {
+          "id": "main",
+          "busy": false
+        },
+        {
+          "id": "f1",
+          "parent": "main",
+          "busy": true
+        }
+      ]
+    }
+  },
+  "grammar": {
+    "chunks": [
+      {
+        "type": "text-delta",
+        "id": "a",
+        "delta": "x"
+      },
+      {
+        "type": "text-start",
+        "id": "a"
+      },
+      {
+        "type": "reasoning-start",
+        "id": "a"
+      },
+      {
+        "type": "text-start",
+        "id": "a"
+      },
+      {
+        "type": "text-delta",
+        "id": "a",
+        "delta": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      {
+        "type": "text-end",
+        "id": "a"
+      },
+      {
+        "type": "text-delta",
+        "id": "a",
+        "delta": "x"
+      }
+    ],
+    "maxChunkBytes": 1024,
+    "recorded": [
+      {
+        "type": "text-start",
+        "id": "a"
+      },
+      {
+        "type": "reasoning-start",
+        "id": "a"
+      },
+      {
+        "type": "text-end",
+        "id": "a"
+      }
+    ]
+  }
+}
