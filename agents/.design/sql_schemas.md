@@ -28,8 +28,9 @@ keeping the names only makes upstream code and docs easy to compare.
 | Fibers | `cf_agents_runs`, `cf_agents_fibers` | — |
 | Shared chat layer | `cf_agents_chat_progress` | `cf:chat-recovery:progress`, `cf:chat:recovering`, `cf:chat:last-terminal` |
 | `AIChatAgent` | `cf_ai_chat_request_context` | — |
+| `Harness` | `cf_agents_harness_sessions`, `cf_agents_harness_operations`, `cf_agents_harness_messages` | `cf_agents:harness_schema_version` |
 
-Fourteen tables in total.
+Seventeen tables in total.
 
 **Conventions** (upstream):
 - **`WITHOUT ROWID` wherever possible.** A DO SQLite row write costs about 1000×
@@ -454,3 +455,60 @@ CREATE INDEX IF NOT EXISTS idx_fibers_status_completed
 | routed-agents catalog | `RoutedAgents` | Out of scope |
 | `chat_sdk_state_*`, channels identity tables | chat-sdk, channels | Out of scope |
 | `cf_ai_chat_agent_messages`, `assistant_messages`, … | Legacy chat storage | No legacy data in Python |
+
+---
+
+## 14. `Harness`: `cf_agents_harness_sessions`, `cf_agents_harness_operations`, `cf_agents_harness_messages`
+
+Python's own: upstream's draft `AgentHarness` has no SQLite schema to copy.
+Design in [harness_transcript.md](./harness_transcript.md) §5. Every row is
+keyed by the harness's capability id, so several harnesses share one object.
+`ensure_tables` runs on start and stamps `cf_agents:harness_schema_version` = 1.
+
+```sql
+CREATE TABLE IF NOT EXISTS cf_agents_harness_sessions (
+  harness TEXT NOT NULL,
+  id TEXT NOT NULL,                 -- '' for the root session
+  parent TEXT,                      -- the session it was forked from
+  history BLOB,                     -- the subclass's opaque history
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (harness, id)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS cf_agents_harness_operations (
+  harness TEXT NOT NULL,
+  session TEXT NOT NULL,
+  id TEXT NOT NULL,                 -- operation id (dedupe key)
+  seq INTEGER NOT NULL,             -- order within the session
+  input TEXT NOT NULL,              -- the user message or tool answers, JSON
+  message_id TEXT,                  -- the user message's transcript id
+  participant TEXT,                 -- who submitted it
+  answers TEXT,                     -- the answers it recorded, JSON
+  status TEXT NOT NULL,
+  checkpoint BLOB,                  -- the last turn.save
+  attempts INTEGER NOT NULL DEFAULT 0,
+  result TEXT,                      -- text and requests, JSON
+  reason TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (harness, session, id)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS cf_agents_harness_messages (
+  harness TEXT NOT NULL,
+  session TEXT NOT NULL,
+  id TEXT NOT NULL,
+  seq INTEGER NOT NULL,             -- order within the session
+  role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+  message TEXT NOT NULL,            -- TranscriptMessage JSON (wire form)
+  operation_id TEXT,                -- the operation that last wrote it
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (harness, session, id)
+) WITHOUT ROWID;
+```
+
+- **One transaction per write pair.** The checkpoint and the reply (`save`),
+  the history and the final reply (settlement), and history plus messages in
+  `fork` and `reset` are each written in one `transactionSync`.
+- **No secondary indexes.** Every read is by harness and session, the leading
+  primary-key columns.
+- **The wake job** is a `cf_agents_jobs` row per session with open work (§2).

@@ -5,6 +5,8 @@ description: "Built from the numpy docstrings in the agents source on every docs
 
 ::: agents
 
+::: agents.harness.transcript
+
 ::: agents.harness.pydantic_ai
 
 ::: agents.models
