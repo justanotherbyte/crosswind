@@ -103,16 +103,25 @@ def test_the_targets_tools_run_and_stream_events() -> None:
         await anext(events)
 
         result = await harness.session().prompt("add milk", operation_id="op")
-        seen = [await anext(events) for _ in range(6)]
+        seen = []
+        while not isinstance(event := await anext(events), OperationEvent) or (
+            event.status != "done"
+        ):
+            if isinstance(event, ToolCallEvent | TextEvent):
+                seen.append(event)
         await events.aclose()
 
         assert result.text == "add=added milk"
         assert notes.ran == ["added milk"]
-        assert seen[2] == ToolCallEvent(
-            operation_id="op", tool_call_id="call-0", name="add", args={"text": "milk"}
-        )
-        assert seen[4] == TextEvent(operation_id="op", text="add=added milk")
-        assert seen[5] == OperationEvent(operation_id="op", status="done")
+        assert seen == [
+            ToolCallEvent(
+                operation_id="op",
+                tool_call_id="call-0",
+                name="add",
+                args={"text": "milk"},
+            ),
+            TextEvent(operation_id="op", text="add=added milk"),
+        ]
 
     asyncio.run(scenario())
 
