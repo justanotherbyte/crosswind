@@ -7,7 +7,7 @@ A [`Harness`][agents.Harness] runs an agent loop inside a Durable Object. You su
 
 Use a harness when a model has to call tools over several steps and the work must outlive a deploy or a crash. Use [`AIChatAgent`](chat.md) when you want to write the model call yourself and stream it to a chat client. Use a [durable task](tasks.md) for fixed steps that don't involve a model.
 
-Crosswind ships [`PydanticAIHarness`](pydantic-ai.md). To run a different framework or your own loop, [write your own harness](custom-harness.md).
+Crosswind ships [`PydanticAIHarness`](pydantic-ai.md). To run a different framework or your own loop, [write your own harness](custom-harness.md). [Harness class](harness-class.md) lists the full API.
 
 ## What the base class does
 
@@ -104,4 +104,5 @@ Write `replay="safe"` tools so that running twice is harmless, such as a read or
 
 - A session's history and an operation's checkpoint are each one SQLite value. [Durable Objects cap a value at 2 MB](https://developers.cloudflare.com/durable-objects/platform/limits/), and the harness doesn't compact history. A checkpoint `save` over the cap raises, and the turn settles `unanswered`. Call `session.reset()` or start a new session before a conversation reaches it.
 - The harness keeps every operation row. Nothing deletes settled operations.
+- A sub-agent has no alarm of its own, and a harness doesn't forward its wake job to the root agent. Install it on a root agent, or on a plain Durable Object.
 - Prompts are strings, so a harness prompt can't carry an image.

@@ -40,8 +40,9 @@ durable object`.
    at or below `max_instances`.
 3. Raise `max_instances`, or lower `sleep_after` so idle instances stop
    sooner.
-4. For large images, pass a longer `instance_get_timeout_ms` to
-   `start_and_wait_for_ports()`.
+4. For large images, pass a longer `instance_get_timeout_ms` and
+   `port_ready_timeout_ms` to `start_and_wait_for_ports()`. If the start uses
+   up `port_ready_timeout_ms`, the SDK skips the port checks.
 
 ## `RuntimeError: Containers have not been enabled for this Durable Object class`
 
@@ -116,8 +117,9 @@ rules in.
 
 ## `ValueError: No port configured for this container`
 
-**Cause.** A request reached `fetch()` or `container_fetch()` with no port, and
-the class doesn't set `default_port`.
+**Cause.** A request reached `fetch()` with no port, and the class doesn't set
+`default_port`. `container_fetch()` raises
+`No port specified for container fetch` for the same reason.
 
 **Fix.** Set `default_port` on the class, or pick the port per request with
 `container.fetch(switch_port(request, port))`.

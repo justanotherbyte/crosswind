@@ -187,3 +187,15 @@ body into memory before Flask runs.
 The adapters leave a body alone when your app sets `Content-Encoding`, so
 `GZipMiddleware` and similar middleware send one layer of compression, not
 two.
+
+This holds only when you don't pass `options`. With `options`, its `encode_body`
+decides. The default, `"automatic"`, lets the runtime compress the body again,
+so pass `"manual"` alongside such middleware:
+
+```python
+from fastapi import FastAPI
+from workers.asgi import Options, entrypoint
+
+app = FastAPI()
+Default = entrypoint(app, options=Options(encode_body="manual"))
+```

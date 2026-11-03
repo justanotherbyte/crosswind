@@ -108,7 +108,6 @@ Worker's URL.
 Add the directories Wynd writes:
 
 ```text title=".gitignore"
-python_modules/
 .wynd/
 ```
 

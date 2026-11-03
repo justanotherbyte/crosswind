@@ -14,11 +14,11 @@ Run Wynd with `uvx wynd <command>`. To pin its version, run
 | `wynd init [directory]`        | Writes a new crosswind-workers project into `directory`, or the current directory, with a [`cloudflare.config.py`](python-config.md#create-a-project). Refuses a directory that already has a project. Doesn't run Wrangler. |
 | `wynd sync`                    | Installs packages for the Worker's Python target into `python_modules/`, if [anything changed](#when-packages-reinstall). Doesn't run Wrangler. |
 | `wynd types [--check]`         | Writes `env.py`, or with `--check` exits `1` if it's out of date. crosswind-workers only. See [Generate typed bindings](types.md). |
-| `wynd dev [args]`              | Syncs, regenerates `env.py` on crosswind-workers projects, then runs `wrangler dev [args]` on the full `python_modules/`. |
+| `wynd dev [args]`              | Syncs, regenerates `env.py` on crosswind-workers projects, then runs `wrangler dev [args]` on the full `python_modules/`. It refuses `--remote`, which Python Workers don't support. |
 | `wynd deploy [args]`           | Syncs, regenerates `env.py`, [prunes](pruning.md) into `.wynd/build/`, then runs `wrangler deploy [args]` on the staged config. |
 | `wynd versions upload [args]`  | As `deploy`, with `wrangler versions upload`.                                                                    |
 | `wynd preview [args]`          | As `deploy`, with `wrangler preview`. `preview delete`, `preview settings`, `preview secret` and `preview base-config` pass through. |
-| Any other command              | Runs `wrangler <command> [args]` without syncing. Unchanged for a Wrangler config. For a `cloudflare.config.py`, Wynd [compiles it first](python-config.md#check-the-compiled-config) and passes the compiled file. |
+| Any other command              | Runs `wrangler <command> [args]` without syncing, with `--config` set to [Wynd's staged copy](#where-wynd-keeps-files) of your config. A `cloudflare.config.py` is [compiled first](python-config.md#check-the-compiled-config). If Wrangler edits the copy, such as `d1 create` adding a binding, Wynd warns you to copy the change into your own config, because it replaces the copy on its next run. |
 
 With `--dry-run`, the three upload commands print one line before Wrangler's
 output:
@@ -106,8 +106,8 @@ wynd: error: wrangler.jsonc has compatibility_date '2026-09-08' and compatibilit
 these changed since the last install:
 
 - The contents of `pyproject.toml` or `pylock.toml`.
-- The config file path. For a `cloudflare.config.py`, that is the compiled
-  file, so switching modes reinstalls.
+- The config file path. Switching modes doesn't change this path, so a mode
+  reinstalls only if its compatibility date or flags differ.
 - The target: Python version, compatibility date or compatibility flags.
 - The Wynd version.
 
@@ -133,9 +133,20 @@ wins. Finding both in one directory is an error. If it finds no config, Wynd
 exits with
 `wynd: error: no config (cloudflare.config.py, wrangler.json, wrangler.jsonc, wrangler.toml) found from <directory>`.
 
-Wynd puts `python_modules/` next to the config file. It uses the nearest
-`pyproject.toml` at or above the working directory and puts `.wynd/` next to
-that file.
+### Where Wynd keeps files
+
+Wynd uses the nearest `pyproject.toml` at or above the working directory and
+puts `.wynd/` next to that file. A config outside that directory is an error.
+
+Wrangler reads files beside its config, so `wynd dev` and passthrough commands
+run from a stand-in for the config's directory, `.wynd/run/<directory>/`. For a
+config next to `pyproject.toml`, that's `.wynd/run/`. It holds the staged
+config, `python_modules/`, copies of `.dev.vars*` and `.env*`, and Wrangler's
+`.wrangler/state/`.
+
+!!! warning
+    `.wrangler/state/` holds local D1, KV and R2 data, so deleting `.wynd/`
+    deletes that data too.
 
 ## Environments
 
@@ -193,9 +204,10 @@ wynd: error: wrangler.jsonc has a relative path under unsafe.metadata.path, whic
 | `cloudflare.config.py`, `pyproject.toml`, `.python-version`, `src/main.py` | `init` | Yes | A new project |
 | `pylock.toml`            | Every syncing command       | Yes       | Locked versions for the Pyodide target                       |
 | `src/env.py`             | `types`, `dev`, uploads, `init` | Yes       | The generated `Env` class, crosswind-workers only             |
-| `python_modules/`        | Every syncing command       | No        | Every installed package, which `wynd dev` runs               |
-| `.wynd.wrangler.json`, `.wynd.<mode>.wrangler.json` | Every command, for a `cloudflare.config.py` | No | The [compiled config](python-config.md#check-the-compiled-config) that Wrangler reads |
-| `.wynd/synced`           | Every syncing command       | No        | A hash of the install's inputs                               |
+| `.wynd/run/<directory>/python_modules/` | Every syncing command | No | Every installed package, which `wynd dev` runs     |
+| `.wynd/run/<directory>/<config>.json`, `<config>.<mode>.json` | `dev` and passthrough commands | No | The staged or [compiled config](python-config.md#check-the-compiled-config) that Wrangler reads |
+| `.wynd/run/<directory>/.wrangler/state/` | Wrangler, during `dev` | No | Local D1, KV and R2 data                                     |
+| `.wynd/run/<directory>/synced` | Every syncing command | No        | A hash of the install's inputs                               |
 | `.wynd/excludes.txt`     | Every syncing command       | No        | The SDK left out of the install                              |
 | `.wynd/site-packages/`   | Every syncing command       | No        | An install in progress                                       |
 | `.wynd/build/`           | Upload commands             | No        | The pruned source, packages and config Wrangler uploads      |

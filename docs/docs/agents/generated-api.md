@@ -8,3 +8,5 @@ description: "Built from the numpy docstrings in the agents source on every docs
 ::: agents.harness.pydantic_ai
 
 ::: agents.models
+
+::: agents.mcp

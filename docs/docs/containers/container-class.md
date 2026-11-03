@@ -67,7 +67,7 @@ class MyContainer(Container):
 
 ## Lifecycle hooks
 
-Override these on your subclass. All of them must be `async def`. See
+Override these on your subclass. Each can be `def` or `async def`. See
 [Lifecycle](lifecycle.md#run-code-on-lifecycle-events) for when each one runs.
 
 ### `on_start`
@@ -101,7 +101,8 @@ async def on_error(self, error: Exception) -> None
 
 Runs when starting the container or waiting for a port fails, and when the
 runtime reports a failure without an exit code. By default it logs `error` and
-re-raises it.
+re-raises it. It doesn't run when the platform has no instance to assign. That
+failure raises from the start call, so catch it there.
 
 ### `on_activity_expired`
 
@@ -156,9 +157,8 @@ response = await self.container_fetch(
 ```
 
 `FetchKwargs` types `method` as
-[`http.HTTPMethod`](https://docs.python.org/3/library/http.html#http.HTTPMethod).
-A plain string such as `"POST"` also works at runtime, but a type checker will
-reject it.
+[`http.HTTPMethod`](https://docs.python.org/3/library/http.html#http.HTTPMethod)
+or `str`, so `"POST"` also works.
 
 - Raises `ValueError` if no port is given and `default_port` isn't set.
 - Raises `TypeError` if `init` options are passed with a `Request`.
@@ -201,9 +201,11 @@ hasn't reported yet.
   Durable Object.
 - `instance_get_timeout_ms`: how long to wait for an instance to be assigned
   and started. Your application may not be ready yet at that point.
-- `port_ready_timeout_ms`: the total budget for the ports to become ready.
-  The SDK converts it to attempts, `ceil(port_ready_timeout_ms /
-  wait_interval)`, and the attempts the start used count against it.
+- `port_ready_timeout_ms`: the budget for each port. The SDK converts it to
+  attempts, `ceil(port_ready_timeout_ms / wait_interval)`, and subtracts the
+  attempts the start used. Each port then gets that many attempts. If the start
+  used them all, the SDK skips the port checks and marks the container
+  `healthy`, so keep this longer than `instance_get_timeout_ms`.
 - `wait_interval`: the time between polls.
 - `env_vars`, `entrypoint`, `enable_internet`, `labels`: override the class
   attributes for this start only.
@@ -461,11 +463,11 @@ async def remove_denied_host(self, hostname: str) -> None
 
 ```python
 type OutboundHandler = Callable[
-    [Request, Any, OutboundHandlerContext[Any]], Awaitable[Response]
+    [Request, Any, OutboundHandlerContext[Any]], Response | Awaitable[Response]
 ]
 ```
 
-An `async` function taking `(request, env, ctx)`:
+A plain or `async` function taking `(request, env, ctx)`:
 
 ```python
 async def handler(request: Request, env: Any, ctx: OutboundHandlerContext) -> Response:

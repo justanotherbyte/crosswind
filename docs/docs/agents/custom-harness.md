@@ -316,7 +316,7 @@ class PatientHarness(Harness):
 
 `heartbeat` is a number of seconds or a `timedelta`. `max_restarts` below 0 or a `heartbeat` of 0 or less raises `ValueError`.
 
-`Harness` implements the Lifecycle hooks `on_start`, `on_job`, `on_memory_limit` and `dispose`. If you override one, call `await super().on_start()` (or the matching hook) first. Without that call, the harness never creates its tables or resumes turns.
+A `Harness` is a [capability](architecture.md). It implements the Lifecycle hooks `on_start`, `on_job`, `on_memory_limit` and `dispose`. If you override one, call `await super().on_start()` (or the matching hook) first. Without that call, the harness never creates its tables or resumes turns.
 
 ## Test a harness
 

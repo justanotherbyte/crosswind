@@ -19,7 +19,7 @@ These rules apply to every class:
   [`SandboxAbortError`](#errors). An event can't cross RPC, so create it in
   the Durable Object.
 - Any call can raise [`SandboxProtocolError`](#errors) if the shim in the image
-  doesn't match the package.
+  doesn't match the package, exits with an error or stops mid-reply.
 
 ## Files
 
@@ -439,14 +439,16 @@ object being restored. Requests outside that grant get `403`.
 
 ## Errors
 
-Every exception subclasses `SandboxError`. Catch `SandboxError` to handle every
-failure from this package, or catch one of the subclasses below.
+The exceptions below subclass `SandboxError`. Catch `SandboxError` to handle
+them all. Other errors pass through unchanged: a JavaScript error from
+`ctx.container.exec`, a gateway or R2 error during a backup, and the `TypeError`
+for a binding that isn't an R2 bucket.
 
 | Exception              | Raised when                                                       | Attributes                                                         |
 | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `SandboxAbortError`    | The `abort` event was set before the call finished.               | None.                                                              |
 | `SandboxFileError`     | Linux rejected a file operation.                                  | `code` (errno name, or `"UNKNOWN"`), `operation`, `path`, `destination` (`rename` only), `detail`. |
-| `SandboxProtocolError` | The package and the shim couldn't complete their exchange, usually because the image's shim doesn't match this package's version. | `code` (`"SANDBOX_PROTOCOL_ERROR"`), `detail`.                     |
+| `SandboxProtocolError` | The package and the shim couldn't complete their exchange. The image's shim doesn't match this package's version, it exited with a non-zero code, or its reply was cut short. | `code` (`"SANDBOX_PROTOCOL_ERROR"`), `detail`.                     |
 | `SandboxS3MountError`  | A mount, inspect or unmount failed.                               | `code` (`"S3_MOUNT_BUSY"`, `"S3_MOUNT_CONFLICT"`, `"S3_MOUNT_FAILED"`, `"S3_MOUNT_INCOMPATIBLE"`), `operation`, `path`, `detail`. |
 | `SandboxBackupError`   | A backup is missing, changed or failed to transfer.               | `code` (`"BACKUP_NOT_FOUND"`, `"BACKUP_INTEGRITY"`, `"BACKUP_TRANSFER"`), `operation`, `path`, `detail`. |
 

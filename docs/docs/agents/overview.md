@@ -18,7 +18,7 @@ Run the following in your terminal:
 uv add cf-agents
 ```
 
-If you'd like support for MCP servers (Python 3.14+) run the following:
+If you'd like to [host MCP servers](mcp-server.md) (Python 3.14+) run the following:
 ```sh
 uv add cf-agents[mcp-server]
 ```
@@ -102,6 +102,8 @@ or SQL, not in instance attributes.
 | Chat                  | `AIChatAgent` with `on_chat_message`                       |
 | Sub-agents            | `self.dynamic_agents`, child agents with their own SQLite  |
 | Durable agent loops   | [`PydanticAIHarness`](pydantic-ai.md), [`Harness`](custom-harness.md), `@tool` |
+| MCP                   | [`add_mcp_server`](mcp-client.md), [`create_mcp_handler`](mcp-server.md) |
+| Your own features     | [`LifecycleCapability`](custom-capability.md)              |
 
 `AIChatAgent` doesn't call a model for you. You call any model client you
 like in `on_chat_message` and yield text or typed chunks.
@@ -116,10 +118,10 @@ like in `on_chat_message` and yield text or typed chunks.
 
 ## Status
 
-These pages cover `cf-agents` 0.1.3, which is alpha. Its API may change
+These pages cover `cf-agents` 0.2.1, which is alpha. Its API may change
 between minor releases. It is an independent community project, not an
 official Cloudflare SDK. It ports `agents` v0.25.0 and the `AIChatAgent` from
-`@cloudflare/ai-chat`.
+`@cloudflare/ai-chat`, with MCP from `agents` v0.28.1.
 
 ## Next steps
 

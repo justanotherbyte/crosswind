@@ -90,8 +90,8 @@ These parts of the runtime have no typed API yet:
 - Module-level `on_fetch` handlers. The `handler` decorator works as in the
   stock SDK.
 - Streaming request and response bodies beyond the `body` stream property.
-- A typed WebSocket API for Durable Objects. Handlers receive the JavaScript
-  `WebSocket`.
+- A typed WebSocket API for Durable Objects. Handlers receive a
+  [`Binding`](api.md#binding) around the JavaScript `WebSocket`.
 
 ## Next steps
 

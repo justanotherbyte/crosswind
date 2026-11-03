@@ -148,8 +148,8 @@ or in an environment you select with `--env`.
 `base_dir` points at the project root or outside it.
 
 **Fix.** Move your code into `src/` and set `"main": "src/entry.py"`. With a
-`cloudflare.config.py`, the message names `.wynd.wrangler.json`, and the fix
-is `entrypoint="src/main.py"` or another path under a subdirectory.
+`cloudflare.config.py`, the fix is `entrypoint="src/main.py"` or another path
+under a subdirectory.
 
 ## `has a relative path under <key>, which Wynd can't point back at the project`
 

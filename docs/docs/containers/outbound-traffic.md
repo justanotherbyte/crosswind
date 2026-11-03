@@ -201,6 +201,10 @@ class Agent(Container):
     intercept_https = True
 ```
 
+This does nothing on its own. It needs an outbound rule, either a class-level
+`outbound`, `outbound_by_host`, `outbound_handlers`, `allowed_hosts` or
+`denied_hosts`, or a runtime change.
+
 The runtime then terminates TLS with an ephemeral certificate authority that it
 writes to `/etc/cloudflare/certs/cloudflare-containers-ca.crt` when the
 container starts. Your container must trust that CA before it makes requests.
@@ -309,8 +313,13 @@ await container.deny_host("evil.example")
 | `allow_host(hostname)` / `deny_host(hostname)`                   | Add one host to the allowlist or blocklist.                                                      |
 | `remove_allowed_host(hostname)` / `remove_denied_host(hostname)` | Remove one host from the allowlist or blocklist.                                                 |
 
+`allow_host` and `remove_allowed_host` on a class with no `allowed_hosts` create
+an allowlist, so every other host then gets a `520`.
+
 Changes apply to a running container without a restart. The SDK stores them in
-the Durable Object, so they survive the Durable Object leaving memory. Naming a
+the Durable Object, so they survive the Durable Object leaving memory. A stored
+list replaces the class attribute on that instance, so changing `allowed_hosts`
+and redeploying doesn't reach it. Call `set_allowed_hosts` to change it. Naming a
 handler that isn't in `outbound_handlers` raises `ValueError`. Over RPC, pass
 these arguments positionally. See
 [Calling container methods](routing.md#calling-container-methods-from-a-worker).
@@ -335,5 +344,5 @@ rule that applies decides what happens:
     If your only rules are class-level `outbound_by_host` entries, only requests
     to those hosts go through `ContainerProxy`. Anything else, such as a
     catch-all, a host list or any runtime change, routes all of the
-    container's HTTP traffic through it. That stays in place until the container
-    restarts.
+    container's HTTP traffic through it. That stays in place after the container
+    restarts, because the SDK saves it in the Durable Object.

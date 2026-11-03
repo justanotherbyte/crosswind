@@ -204,9 +204,7 @@ Point your editor at `.venv` if it doesn't find it. Then add Wynd's output to
 
 ```text title=".gitignore"
 .venv/
-python_modules/
 .wynd/
-.wrangler/
 ```
 
 Commit `pylock.toml`. It pins the package versions Wynd installs for the

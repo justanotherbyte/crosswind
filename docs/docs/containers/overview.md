@@ -91,7 +91,7 @@ Paid plan. To create a project first, follow
 
 ## Status
 
-These pages cover `containers-py` 0.1.1, which needs Python 3.12 or later.
+These pages cover `containers-py` 0.2.1, which needs Python 3.12 or later.
 The package is pre-1.0, and its API may change between minor releases. It is
 an independent community project, not an official Cloudflare SDK.
 
