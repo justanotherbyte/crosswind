@@ -45,7 +45,11 @@ markdown_extensions:
   - tables
   - pymdownx.tasklist:
       custom_checkbox: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 nav:
@@ -67,6 +71,8 @@ nav:
       - Build a capability: agents/custom-capability.md
       - Connect to MCP servers: agents/mcp-client.md
       - Host an MCP server: agents/mcp-server.md
+      - Store sessions and streams: agents/sessions-and-streams.md
+      - Observe an agent: agents/observability.md
       - Long-running work: agents/long-running-work.md
       - Use sub-agents: agents/sub-agents.md
       - Migrate from TypeScript: agents/coming-from-typescript.md
@@ -103,6 +109,7 @@ nav:
     - Reference:
       - API reference: sandboxes/api.md
       - Generated API: sandboxes/generated-api.md
+      - Troubleshooting: sandboxes/troubleshooting.md
   - Workers:
     - Overview: workers/overview.md
     - Getting started: workers/getting-started.md

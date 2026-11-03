@@ -25,14 +25,20 @@ Crosswind ships [`PydanticAIHarness`](pydantic-ai.md). To run a different framew
 
 Every `submit()`, `prompt()` or `stream()` call creates one operation:
 
-```text
-submit() -> queued -> running -> done
-              |          |-----> needs_input
-              |          |-----> unanswered -- retry() --> queued
-              |          |-----> aborted
-              |          '-----> crash: stays running, resumes from its checkpoint
-              '----------------> aborted
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> queued: submit()
+    queued --> running
+    queued --> aborted: abort()
+    running --> done
+    running --> needs_input
+    running --> unanswered
+    running --> aborted: abort()
+    unanswered --> queued: retry()
 ```
+
+A crash leaves the operation `running`, and it resumes from its checkpoint.
 
 | Status        | Open | Meaning                                                          |
 | ------------- | ---- | ---------------------------------------------------------------- |

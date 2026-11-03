@@ -441,8 +441,9 @@ object being restored. Requests outside that grant get `403`.
 
 The exceptions below subclass `SandboxError`. Catch `SandboxError` to handle
 them all. Other errors pass through unchanged: a JavaScript error from
-`ctx.container.exec`, a gateway or R2 error during a backup, and the `TypeError`
-for a binding that isn't an R2 bucket.
+`ctx.container.exec`, a gateway or R2 error during a backup, and the error for
+a binding that isn't an R2 bucket. See
+[Troubleshooting](troubleshooting.md).
 
 | Exception              | Raised when                                                       | Attributes                                                         |
 | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ |

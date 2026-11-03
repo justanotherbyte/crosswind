@@ -399,12 +399,12 @@ JSON line to the `agents.events` logger at `DEBUG`. To see them:
 ```python
 import logging
 
-logging.basicConfig()
 logging.getLogger("agents.events").setLevel(logging.DEBUG)
 ```
 
-Without a handler such as the one `basicConfig()` adds, Python prints only
-`WARNING` and above, so the events don't appear.
+On Workers, the SDK sends its logs to the JavaScript console for you. Don't add
+`logging.basicConfig()` as well, or each line appears twice.
 
 To send events elsewhere, set `observability` to an object with an
-`emit(event: ObservabilityEvent)` method.
+`emit(event: ObservabilityEvent)` method. See
+[Observe an agent](observability.md), which also lists every event.

@@ -50,14 +50,21 @@ class Default(WorkerEntrypoint):
 
 A browser connected with the `useAgent` React hook can call `agent.stub.increment(1)`. Every connected client then receives the new state.
 
-```typescript
+```tsx
 import { useAgent } from "agents/react";
 
-function Counter() {
-  const agent = useAgent({ agent: "Counter" });
+export function Counter() {
+  const agent = useAgent<{ count: number }>({ agent: "Counter" });
 
+  return (
+    <button onClick={() => agent.stub.increment(1)}>
+      Count: {agent.state?.count ?? 0}
+    </button>
+  );
 }
 ```
+
+Open it in two tabs and click the button. Both tabs show the new count, without you writing any code to sync them. See [Connect clients](clients.md) for more.
 
 ## How it works
 
@@ -103,6 +110,7 @@ or SQL, not in instance attributes.
 | Sub-agents            | `self.dynamic_agents`, child agents with their own SQLite  |
 | Durable agent loops   | [`PydanticAIHarness`](pydantic-ai.md), [`Harness`](custom-harness.md), `@tool` |
 | MCP                   | [`add_mcp_server`](mcp-client.md), [`create_mcp_handler`](mcp-server.md) |
+| Durable output and history | [`Streams`, `Sessions`](sessions-and-streams.md)      |
 | Your own features     | [`LifecycleCapability`](custom-capability.md)              |
 
 `AIChatAgent` doesn't call a model for you. You call any model client you

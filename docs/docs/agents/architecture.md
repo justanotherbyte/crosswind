@@ -15,17 +15,18 @@ An agent needs far more than that. The scheduler might want to wake at 09:00 whi
 
 So one object sits in front of all of it. That's `Lifecycle`, and there's one per Durable Object:
 
-```text
-                 runtime
-                    |   fetch, alarm, webSocket*
-                    v
-               +-----------+
-               | Lifecycle |   startup, the job table, the one alarm
-               +-----------+
-                    |
-     +--------+-----+-----+---------+--------+
- scheduler  queue  state  your own  ...  websockets
+```mermaid
+flowchart TD
+    runtime["Cloudflare runtime"] -->|"fetch, alarm, webSocket*"| lifecycle["Lifecycle"]
+    lifecycle --> scheduler
+    lifecycle --> queue
+    lifecycle --> state
+    lifecycle --> yours["your own"]
+    lifecycle --> websockets
+    lifecycle -->|"if no capability claims it"| hooks["your agent's hooks"]
 ```
+
+`Lifecycle` owns startup, the job table and the one alarm.
 
 `Lifecycle` is SDK code, not a platform feature. It's a normal Python object, built on the same `ctx.storage` and `setAlarm` you'd use yourself.
 

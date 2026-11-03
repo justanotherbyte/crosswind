@@ -108,8 +108,8 @@ Cancelling the code awaiting `save_messages` stops the turn and raises
 
 | Attribute  | Type       | Description                                                             |
 | ---------- | ---------- | ----------------------------------------------------------------------- |
-| `sessions` | `Sessions` | Where the transcript is stored.                                         |
-| `streams`  | `Streams`  | Where each turn's output is stored, so reconnecting clients can resume. |
+| `sessions` | [`Sessions`](sessions-and-streams.md#sessions) | Where the transcript is stored.                                         |
+| `streams`  | [`Streams`](sessions-and-streams.md#streams) | Where each turn's output is stored, so reconnecting clients can resume. |
 
 ## Messages and parts
 
