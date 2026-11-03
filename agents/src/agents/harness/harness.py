@@ -646,9 +646,8 @@ class Harness(LifecycleCapability):
         )
         return turn, run
 
-    def _emit(self, session: str, run: ActiveRun, event: HarnessEvent) -> None:
-        if isinstance(event, ChunkEvent):
-            run.partial.append(event.chunk)
+    def _emit(self, session: str, run: ActiveRun, event: ChunkEvent) -> None:
+        run.partial.append(event.chunk)
         self._events.publish(session, event)
 
     def _save(
