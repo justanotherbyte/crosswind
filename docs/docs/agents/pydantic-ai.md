@@ -129,9 +129,11 @@ Each Crosswind type maps to one Pydantic AI type:
 | `ToolRequest`                   | An entry in `DeferredToolRequests.approvals` or `.calls`  |
 | `Approval`, `ToolOutput`        | An entry in `DeferredToolResults.approvals` or `.calls`   |
 | History and checkpoint bytes    | `ModelMessagesTypeAdapter` JSON                           |
-| `TextEvent`                     | `PartStartEvent` and `PartDeltaEvent` with text           |
-| `ToolCallEvent`                 | `FunctionToolCallEvent`                                   |
-| `ToolResultEvent`               | `FunctionToolResultEvent`                                 |
+| `TextInput`, `FileInput`        | `UserPromptPart` content: text, `BinaryContent` or a file URL type |
+| `ChunkEvent` text and reasoning | `PartStartEvent` and `PartDeltaEvent` with text or thinking |
+| `ChunkEvent` tool input         | `PartStartEvent` and `PartDeltaEvent` with a tool call      |
+| `ChunkEvent` tool output        | `FunctionToolResultEvent`                                 |
+| Transcript reply                | The `ModelResponse`s and tool returns since the last user prompt |
 
 The harness overrides `output_type` and `deps`, and adds your `@tool` methods to the agent's toolsets. Every other setting on `pydantic_ai.Agent` applies as usual, such as `model_settings`, `retries` and the agent's own tools.
 
@@ -265,7 +267,7 @@ async def clear_with_approval(self) -> str | None:
 - The turn settles with the status `needs_input`, and `result.requests` lists the tool calls.
 - Answer by submitting a list of `Approval`s. Pass `approved=False` and a `message` to tell the model why you refused.
 - A tool the client runs has `kind="call"`. Answer it with `ToolOutput(id=request.id, value=...)`.
-- Answer every request in one list. A partial list settles the new operation `unanswered`, and the requests stay open. Submit the full list to continue.
+- Answers can arrive in several operations, such as one per person approving. An operation that leaves requests open settles `done` without running a turn, and the operation that answers the last one continues the turn. The first answer to each request wins.
 - Answer before you send a new prompt. Otherwise the prompt settles `unanswered`. `session.reset()` clears the history if you want to drop the open calls instead.
 
 ## Stream a response
@@ -273,23 +275,35 @@ async def clear_with_approval(self) -> str | None:
 `stream()` submits a prompt and yields its events as the turn runs:
 
 ```python
-from agents import TextEvent
+from agents import ChunkEvent
+from agents.harness.transcript import TextDelta
 
 async def ask_and_broadcast(self, message_id: str, prompt: str) -> None:
     session = self.harness.session()
 
     async for event in session.stream(prompt, operation_id=message_id):
-        if isinstance(event, TextEvent):
-            self.broadcast(event.text)
+        if isinstance(event, ChunkEvent) and isinstance(event.chunk, TextDelta):
+            self.broadcast(event.chunk.delta)
 
     result = await session.wait(message_id)
 ```
 
-- `stream()` yields `OperationEvent`, `TextEvent`, `ToolCallEvent` and `ToolResultEvent` for this operation, and ends when it settles.
+- `stream()` yields `OperationEvent`, `RunStartEvent`, `ChunkEvent` and `RunEndEvent` for this operation, and ends when it settles.
+- Each `ChunkEvent` carries one piece of the reply: text, reasoning, a tool call's input or a tool's output. The harness turns Pydantic AI's stream events into these chunks.
 - `operation_id` dedupes retries. Resubmitting an open operation follows it, and resubmitting a settled one yields nothing.
 - `wait()` returns the final result, including any tool requests.
-- `watch()` follows the whole session instead. It first yields a `SessionSnapshot` and never ends by itself.
-- The harness doesn't store events. A client that reconnects doesn't get the text it missed.
+- `watch()` follows the whole session instead. It first yields a `SessionSnapshot` with the transcript and the reply in progress, and never ends by itself.
+
+## Read the transcript
+
+The harness keeps a transcript next to the Pydantic AI history: one user message per prompt and one assistant message per turn, with text, reasoning, tool calls and their results as parts. [The transcript](harness.md#the-transcript) explains how it's written.
+
+- A prompt can be a list of `TextInput` and `FileInput` parts. A `data:` URL becomes `BinaryContent`, and any other URL becomes `ImageUrl`, `AudioUrl`, `VideoUrl` or `DocumentUrl` by its media type.
+- A file the model makes is kept as a `data:` URL of up to 768 KiB. A larger one shows as a `dropped-file` data part with its media type and size, and the history still has it.
+- Each assistant message's `metadata` holds the model name, token usage and finish reason of the turn's last model response.
+- A tool the client runs gets the turn's `participant` as its `owner`. Pass `participant=` to `submit` when several people share a session.
+
+`session.reset(handoff)` clears the history and the transcript. With a handoff note, the new history starts with it as a system prompt, so the model reads the note before the next prompt.
 
 ## Keep separate conversations
 
@@ -307,12 +321,12 @@ await branch.prompt("Now plan it without meetings")
 | ---------------------------- | ----------------------------------------------- |
 | `harness.session(id)`        | Returns a handle. The first submit creates the session, so `id` can be your own key, like `"user-42"` |
 | `harness.sessions.create()`  | Creates an empty session                        |
-| `harness.sessions.fork(id)`  | Creates a session with a copy of `id`'s history |
-| `harness.sessions.list()`    | Returns every session id, oldest first          |
+| `harness.sessions.fork(id)`  | Creates a session with a copy of `id`'s history and transcript |
+| `harness.sessions.list()`    | Returns a `SessionInfo` per session, oldest first |
 | `session.pending()`          | Returns the open operations, oldest first       |
 | `session.abort(id)`          | Stops one open operation, or all of them        |
 | `session.retry(id)`          | Runs an `unanswered` operation again, unless a later one has run |
-| `session.reset()`            | Clears the history                              |
+| `session.reset(handoff)`     | Clears the history and the transcript           |
 
 Each session runs one turn at a time. New prompts queue behind open work, or raise `SessionBusyError` if you submit with `when_busy="reject"`.
 
@@ -324,7 +338,7 @@ Where the crash lands decides what repeats:
 
 | The turn was in   | On resume                                                                  |
 | ----------------- | -------------------------------------------------------------------------- |
-| A model request   | Pydantic AI sends the request again, and text events repeat                |
+| A model request   | Pydantic AI sends the request again, and its chunks stream again in a new run |
 | A round of tools  | Each call in the round gets one of the outcomes in the next table          |
 
 A tool result isn't saved until the next model request's checkpoint. If a round has three calls and the crash lands during the third, all three count as interrupted, including the two that finished.
@@ -376,9 +390,13 @@ Two constructor options control recovery:
 
 The session's last operation stopped at `needs_input`, and you sent a prompt instead of answers. Answer `result.requests`, or call `session.reset()` to clear the history.
 
-### Why does the reason say "Tool call results need to be provided for all deferred tool calls"?
+### Why is the reason `not-waiting`?
 
-The answers don't cover every request, or an `id` doesn't match. Submit one answer per request in `result.requests`. The failed operation didn't change the history.
+No request matches the answers: an `id` is wrong, each request already has an answer, or the session isn't waiting on tool calls. Answer with the ids in `result.requests`.
+
+### Why is the reason `not-owner`?
+
+A `ToolOutput` came from a different `participant` than the one who started the turn. Only that participant's client runs its tools.
 
 ### Why is the reason `interrupted`?
 
