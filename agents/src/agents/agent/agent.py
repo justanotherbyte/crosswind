@@ -308,6 +308,16 @@ class Agent(Generic[S], DurableObject):  # noqa: UP046  (see above; 3.12 has no 
         return self._lifecycle
 
     @property
+    def websockets(self) -> WebSockets:
+        """The installed WebSockets capability serving the agent's connections.
+
+        Components that share the agent's sockets add their handlers with
+        ``websockets.use(...)``; they run before ``on_message`` and can claim
+        a frame.
+        """
+        return self._websockets
+
+    @property
     def session_affinity(self) -> str:
         """A stable, unique key for this instance (e.g. for Workers AI)."""
         return str(self.ctx.id)
