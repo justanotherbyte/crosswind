@@ -1,6 +1,8 @@
 import inspect
 
 import agents
+import agents.channels
+import agents.channels.web
 import agents.mcp
 from agents import (
     agent,
@@ -60,7 +62,7 @@ def test_all_is_a_tuple() -> None:
 
 
 def test_public_classes_and_functions_have_docstrings() -> None:
-    for package in (agents, agents.mcp):
+    for package in (agents, agents.mcp, agents.channels, agents.channels.web):
         for name in package.__all__:
             obj = getattr(package, name)
             if not (inspect.isclass(obj) or inspect.isfunction(obj)):
@@ -68,3 +70,9 @@ def test_public_classes_and_functions_have_docstrings() -> None:
             doc = obj.__dict__.get("__doc__") if inspect.isclass(obj) else obj.__doc__
             # dataclasses fill a missing class docstring with their signature
             assert doc and not doc.startswith(f"{name}("), name
+
+
+def test_channels_names_stay_out_of_the_root() -> None:
+    for package in (agents.channels, agents.channels.web):
+        assert isinstance(package.__all__, tuple)
+        assert not set(package.__all__) & set(agents.__all__)
