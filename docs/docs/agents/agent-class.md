@@ -99,6 +99,7 @@ so does the request, message or alarm that woke the agent.
 | `dynamic_agents`           | `DynamicAgents`           | This agent's sub-agents.                                 |
 | `parent_path`, `self_path` | `Sequence[AgentPathStep]` | Agents from the root down. Empty on a root.              |
 | `lifecycle`                | `Lifecycle`               | What the capabilities are installed on. See [Lifecycle and capabilities](lifecycle-class.md). |
+| `websockets`               | `WebSockets`              | The installed WebSockets capability. Add handlers that share the agent's connections with `websockets.use(...)`; they run before `on_message`. |
 | `mcp`                      | `MCPClientManager`        | The [MCP client](mcp-client.md). Raises `MCPNotEnabledError` unless `options.mcp` is set. |
 | `session_affinity`         | `str`                     | The Durable Object id as a string. Stable per instance.  |
 
