@@ -7,8 +7,9 @@ import pytest
 from fake_runtime import Host
 from workers import Response
 
-from agents.harness import OperationEvent, TextEvent, ToolCallEvent, tool
+from agents.harness import ChunkEvent, OperationEvent, tool
 from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel, workers_ai
+from agents.harness.transcript import TextDelta, ToolInputAvailable
 from agents.lifecycle import Lifecycle
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "models"))
@@ -71,16 +72,12 @@ def test_a_tool_round_trip_through_the_harness() -> None:
 
     seen = asyncio.run(scenario())
 
+    chunks = [event.chunk for event in seen if isinstance(event, ChunkEvent)]
     assert (
-        ToolCallEvent(
-            operation_id="op", tool_call_id="c1", name="search", args={"query": "milk"}
-        )
-        in seen
+        ToolInputAvailable(tool_call_id="c1", tool_name="search", input={"query": "milk"})
+        in chunks
     )
-    assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", text="You have"),
-        TextEvent(operation_id="op", text=" milk."),
-    ]
+    assert _text_deltas(seen) == ["You have", " milk."]
     first, second = (payload for _, payload in ai.calls)
     assert first["stream"] is True
     assert first["max_tokens"] == 50
@@ -169,9 +166,7 @@ def test_a_streamed_qwen_turn_keeps_reasoning_and_skips_blank_text() -> None:
 
     seen = asyncio.run(scenario())
 
-    assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", text="You have milk.")
-    ]
+    assert _text_deltas(seen) == ["You have milk."]
     tool_turn = ai.calls[1][1]["messages"][-2]
     assert tool_turn["content"] == ""
     assert tool_turn["tool_calls"][0]["function"]["name"] == "search"
@@ -244,9 +239,7 @@ def test_streamed_blank_lines_skip_events_output_and_history() -> None:
 
     seen = asyncio.run(scenario())
 
-    assert [event for event in seen if isinstance(event, TextEvent)] == [
-        TextEvent(operation_id="op", text="Sunny.")
-    ]
+    assert _text_deltas(seen) == ["Sunny."]
     assert {"role": "assistant", "content": "Sunny."} in ai.calls[1][1]["messages"]
 
 
@@ -356,3 +349,11 @@ def test_a_tools_documents_reach_the_model_as_a_note() -> None:
     tool = ai.calls[1][1]["messages"][-1]
     assert tool["role"] == "tool"
     assert "cannot read documents" in tool["content"]
+
+
+def _text_deltas(events: list[object]) -> list[str]:
+    return [
+        event.chunk.delta
+        for event in events
+        if isinstance(event, ChunkEvent) and isinstance(event.chunk, TextDelta)
+    ]

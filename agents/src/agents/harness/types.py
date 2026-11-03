@@ -28,13 +28,10 @@ __all__ = (
     "SaveCheckpoint",
     "SessionInfo",
     "SessionSnapshot",
-    "TextEvent",
     "TextInput",
     "ToolAnswer",
-    "ToolCallEvent",
     "ToolOutput",
     "ToolRequest",
-    "ToolResultEvent",
     "ToolSpec",
     "Turn",
     "TurnResult",
@@ -238,37 +235,6 @@ class ResetEvent:
     type: Literal["reset"] = "reset"
 
 
-@dataclass(slots=True, frozen=True, kw_only=True)
-class TextEvent:
-    """Model text streamed during a turn."""
-
-    operation_id: str
-    text: str
-    type: Literal["text"] = "text"
-
-
-@dataclass(slots=True, frozen=True, kw_only=True)
-class ToolCallEvent:
-    """A tool started running."""
-
-    operation_id: str
-    tool_call_id: str
-    name: str
-    args: dict[str, JSONValue]
-    type: Literal["tool-call"] = "tool-call"
-
-
-@dataclass(slots=True, frozen=True, kw_only=True)
-class ToolResultEvent:
-    """A tool finished."""
-
-    operation_id: str
-    tool_call_id: str
-    result: JSONValue
-    is_error: bool = False
-    type: Literal["tool-result"] = "tool-result"
-
-
 type HarnessEvent = (
     SessionSnapshot
     | OperationEvent
@@ -277,9 +243,6 @@ type HarnessEvent = (
     | ChunkEvent
     | MessageEvent
     | ResetEvent
-    | TextEvent
-    | ToolCallEvent
-    | ToolResultEvent
 )
 """What ``watch`` yields."""
 
@@ -323,8 +286,7 @@ class Turn:
     participant
         Who started the turn: the client tool calls it makes are theirs.
     emit
-        Publishes an event to the session's watchers; a `ChunkEvent` also
-        becomes part of the in-flight reply ``watch`` snapshots show.
+        Streams a chunk of the reply to the session's watchers.
     save
         Durably replaces the turn's checkpoint and, with ``reply``, the
         assistant message's parts so far, in one transaction.
@@ -338,7 +300,7 @@ class Turn:
     attempt: int
     tools: Sequence[ToolSpec]
     participant: str | None
-    emit: Callable[[HarnessEvent], None]
+    emit: Callable[[ChunkEvent], None]
     save: SaveCheckpoint
 
 
