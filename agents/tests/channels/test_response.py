@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from fake_runtime import Host
 
-from agents.channels import ResponseGrammarError, ResponseWriter
+from agents.channels import ResponseGrammarError, ResponseWriter, TextStart
+from agents.harness.transcript import chunk_from_wire, to_wire
 from agents.lifecycle import Lifecycle
 from agents.streams import StreamClosedError, Streams, StreamSerializationError
 
@@ -44,7 +45,7 @@ def append_all(response, sequence):
 def test_upstream_grammar_and_size_case():
     async def scenario(streams):
         response = ResponseWriter(await streams.open("r1"))
-        rejected = append_all(response, GRAMMAR["chunks"])
+        rejected = append_all(response, map(chunk_from_wire, GRAMMAR["chunks"]))
         response.end()
         return rejected, await chunks(streams, "r1")
 
@@ -62,7 +63,7 @@ def text(kind, step, id="a"):
     chunk = {"type": f"{kind}-{step}", "id": id}
     if step == "delta":
         chunk["delta"] = "x"
-    return chunk
+    return chunk_from_wire(chunk)
 
 
 def tool(step, id="c"):
@@ -75,7 +76,7 @@ def tool(step, id="c"):
         chunk["input"] = {}
     if step == "error":
         chunk["errorText"] = "bad"
-    return chunk
+    return chunk_from_wire(chunk)
 
 
 # (name, chunks before, the chunk, the error it raises or None)
@@ -156,16 +157,16 @@ GRAMMAR_TABLE = [
     (
         "tool output, input never seen",
         [],
-        {"type": "tool-output-available", "toolCallId": "c", "output": 1},
+        chunk_from_wire({"type": "tool-output-available", "toolCallId": "c", "output": 1}),
         None,
     ),
-    ("approval request", [], {"type": "tool-approval-request", "toolCallId": "c", "approvalId": "a"}, None),
-    ("tool output denied", [], {"type": "tool-output-denied", "toolCallId": "c"}, None),
-    ("tool output error", [], {"type": "tool-output-error", "toolCallId": "c", "errorText": "x"}, None),
-    ("file", [], {"type": "file", "mediaType": "text/plain", "url": "data:,x"}, None),
-    ("source url", [], {"type": "source-url", "sourceId": "s", "url": "https://x"}, None),
-    ("data", [], {"type": "data", "name": "n", "data": None}, None),
-    ("metadata", [], {"type": "metadata", "metadata": {"k": 1}}, None),
+    ("approval request", [], chunk_from_wire({"type": "tool-approval-request", "toolCallId": "c", "approvalId": "a"}), None),
+    ("tool output denied", [], chunk_from_wire({"type": "tool-output-denied", "toolCallId": "c"}), None),
+    ("tool output error", [], chunk_from_wire({"type": "tool-output-error", "toolCallId": "c", "errorText": "x"}), None),
+    ("file", [], chunk_from_wire({"type": "file", "mediaType": "text/plain", "url": "data:,x"}), None),
+    ("source url", [], chunk_from_wire({"type": "source-url", "sourceId": "s", "url": "https://x"}), None),
+    ("data", [], chunk_from_wire({"type": "data", "name": "n", "data": None}), None),
+    ("metadata", [], chunk_from_wire({"type": "metadata", "metadata": {"k": 1}}), None),
 ]
 
 
@@ -188,13 +189,14 @@ def test_grammar(before, chunk, error):
         return await chunks(streams, "r")
 
     recorded = run(scenario)
-    assert recorded == ([*before, chunk] if error is None else before)
+    expected = [*before, chunk] if error is None else before
+    assert recorded == [to_wire(c) for c in expected]
 
 
 def test_a_chunk_that_fails_to_record_changes_no_part():
     async def scenario(streams):
         response = ResponseWriter(await streams.open("r"))
-        big = {"type": "text-start", "id": "a", "providerMetadata": {"x": "y" * 64}}
+        big = TextStart(id="a", provider_metadata={"x": "y" * 64})
         with pytest.raises(StreamSerializationError):
             response.append(big)
         # The start was not recorded, so the part is still free and closed.
@@ -204,7 +206,7 @@ def test_a_chunk_that_fails_to_record_changes_no_part():
         response.end()
         return await chunks(streams, "r")
 
-    assert run(scenario, max_chunk_bytes=64) == [text("text", "start")]
+    assert run(scenario, max_chunk_bytes=64) == [to_wire(text("text", "start"))]
 
 
 def test_id_and_end():
@@ -231,7 +233,8 @@ def test_pipe_appends_then_ends():
         await response.pipe(source())
         return (await streams.status("r")).state, await chunks(streams, "r")
 
-    assert run(scenario) == ("completed", [text("text", "start"), text("text", "delta")])
+    recorded = [to_wire(text("text", "start")), to_wire(text("text", "delta"))]
+    assert run(scenario) == ("completed", recorded)
 
 
 @pytest.mark.parametrize("failure", ["source", "grammar"])
@@ -250,7 +253,8 @@ def test_pipe_interrupts_the_response_on_failure(failure):
         status = await streams.status("r")
         return status.state, status.error, await chunks(streams, "r")
 
-    assert run(scenario) == ("errored", "interrupted", [text("text", "start")])
+    recorded = [to_wire(text("text", "start"))]
+    assert run(scenario) == ("errored", "interrupted", recorded)
 
 
 def test_pipe_interrupts_the_response_when_cancelled():

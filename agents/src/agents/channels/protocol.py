@@ -3,12 +3,11 @@
 Port of upstream ``experimental/channels/protocol.ts``. Records follow
 ``.design/utilities.md`` §5: snake_case attributes, camelCase wire names, and a
 class-constant discriminator per union (``type``, ``status`` or ``ok``).
-"""
 
-# TODO(phase 0a): re-export the transcript records (TranscriptMessage, its
-# parts, ResponseChunk) from agents.harness.transcript once that module lands,
-# and replace WireMessage and WireChunk with them. Until then, messages and
-# chunks are carried in wire form.
+The transcript records (`TranscriptMessage`, its parts, the `ResponseChunk`
+union) are `agents.harness.transcript`'s, re-exported here so the names match
+upstream's.
+"""
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -18,6 +17,37 @@ from typing_extensions import TypeIs
 
 from ..core.records import wire
 from ..core.types import JSONValue
+from ..harness.transcript import (
+    Data,
+    DataPart,
+    FilePart,
+    MessagePart,
+    Metadata,
+    ReasoningDelta,
+    ReasoningEnd,
+    ReasoningPart,
+    ReasoningStart,
+    ResponseChunk,
+    SourceDocumentPart,
+    SourceUrlPart,
+    TextDelta,
+    TextEnd,
+    TextPart,
+    TextStart,
+    ToolApproval,
+    ToolApprovalRequest,
+    ToolInputAvailable,
+    ToolInputDelta,
+    ToolInputError,
+    ToolInputStart,
+    ToolOutputAvailable,
+    ToolOutputDenied,
+    ToolOutputError,
+    ToolPart,
+    ToolState,
+    TranscriptMessage,
+    part_from_wire,
+)
 
 __all__ = (
     "ApprovalResponse",
@@ -29,27 +59,47 @@ __all__ = (
     "ConversationOperation",
     "ConversationReset",
     "ConversationSnapshot",
+    "Data",
+    "DataPart",
+    "FilePart",
     "InboundEvent",
     "InboundMessage",
+    "MessagePart",
+    "Metadata",
     "Participant",
     "QueuedTurn",
+    "ReasoningDelta",
+    "ReasoningEnd",
+    "ReasoningPart",
+    "ReasoningStart",
+    "ResponseChunk",
     "RunningTurn",
     "SettledTurn",
+    "SourceDocumentPart",
+    "SourceUrlPart",
+    "TextDelta",
+    "TextEnd",
+    "TextPart",
+    "TextStart",
+    "ToolApproval",
+    "ToolApprovalRequest",
+    "ToolInputAvailable",
+    "ToolInputDelta",
+    "ToolInputError",
+    "ToolInputStart",
+    "ToolOutputAvailable",
+    "ToolOutputDenied",
+    "ToolOutputError",
+    "ToolPart",
     "ToolResult",
     "ToolResultError",
     "ToolResultOk",
+    "ToolState",
+    "TranscriptMessage",
     "TurnOutcome",
     "TurnStatus",
-    "WireChunk",
-    "WireMessage",
     "parse_inbound_event",
 )
-
-type WireMessage = dict[str, JSONValue]
-"""A transcript message in wire form (upstream ``TranscriptMessage``)."""
-
-type WireChunk = dict[str, JSONValue]
-"""A response chunk in wire form (upstream ``ResponseChunk``)."""
 
 
 # Participants
@@ -163,7 +213,7 @@ class ConversationSnapshot:
         Every turn that is queued, running or awaiting input.
     """
 
-    messages: list[WireMessage] = field(default_factory=list)
+    messages: list[TranscriptMessage] = field(default_factory=list)
     turns: list[TurnStatus] = field(default_factory=list)
 
 
@@ -206,7 +256,7 @@ class InboundMessage:
     """
 
     event_id: str = wire("eventId")
-    message: WireMessage
+    message: TranscriptMessage
     client_tools: list[ClientTool] | None = wire("clientTools", None)
     type: ClassVar[str] = "message"
 
@@ -442,23 +492,33 @@ def parse_inbound_event(value: object) -> InboundEvent | str:
 
 def _parse_message(event: Mapping[str, JSONValue], event_id: str) -> InboundEvent | str:
     message = event.get("message")
-    if not isinstance(message, dict) or not _is_id(message.get("id")):
+    if not isinstance(message, dict):
+        return "message.id"
+    message_id = message.get("id")
+    if not _is_id(message_id):
         return "message.id"
     if message.get("role") != "user":
         return "message.role"
     parts = message.get("parts")
-    # A part needs only a string type: the agent decides which types it accepts.
-    if not isinstance(parts, list) or not all(
-        isinstance(part, dict) and isinstance(part.get("type"), str) for part in parts
-    ):
+    if not isinstance(parts, list):
         return "message.parts"
-    parsed: WireMessage = {"id": message["id"], "role": "user", "parts": parts}
+    parsed: list[MessagePart] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            return "message.parts"
+        try:
+            parsed.append(part_from_wire(part))
+        except ValueError:
+            return "message.parts"
     metadata = message.get("metadata")
-    if isinstance(metadata, dict):
-        parsed["metadata"] = metadata
     return InboundMessage(
         event_id=event_id,
-        message=parsed,
+        message=TranscriptMessage(
+            id=message_id,
+            role="user",
+            parts=parsed,
+            metadata=metadata if isinstance(metadata, dict) else None,
+        ),
         client_tools=_client_tools(event.get("clientTools")),
     )
 

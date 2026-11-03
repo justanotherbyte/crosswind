@@ -18,7 +18,11 @@ from agents.channels import (
     SettledTurn,
     ToolResult,
     ToolResultError,
+    TextDelta,
+    TextPart,
+    TextStart,
     ToolResultOk,
+    TranscriptMessage,
     parse_inbound_event,
 )
 from agents.channels.web import (
@@ -62,16 +66,16 @@ def test_golden_header_names_the_pinned_commit():
 
 
 def test_parses_golden_client_frames():
-    hi = [{"type": "text", "text": "hi"}]
+    hi = [TextPart(text="hi")]
     assert parse(GOLDEN["client"]["message"]) == EventFrame(
         event=InboundMessage(
-            event_id="e1", message={"id": "e1", "role": "user", "parts": hi}
+            event_id="e1", message=TranscriptMessage(id="e1", role="user", parts=hi)
         )
     )
     # The sender's participant is never read from the frame.
     assert parse(GOLDEN["client"]["message-with-forged-participant"]) == EventFrame(
         event=InboundMessage(
-            event_id="e1", message={"id": "m1", "role": "user", "parts": hi}
+            event_id="e1", message=TranscriptMessage(id="m1", role="user", parts=hi)
         )
     )
     assert parse(GOLDEN["client"]["cancel"]) == EventFrame(
@@ -166,6 +170,7 @@ def test_a_missing_event_is_invalid():
 # Inbound events: the first invalid field, as upstream parseEvent names it
 
 USER = {"id": "m", "role": "user", "parts": []}
+USER_MESSAGE = TranscriptMessage(id="m", role="user", parts=[])
 
 
 @pytest.mark.parametrize(
@@ -183,6 +188,14 @@ USER = {"id": "m", "role": "user", "parts": []}
         ({"type": "message", "message": {**USER, "parts": [{}]}}, "message.parts"),
         (
             {"type": "message", "message": {**USER, "parts": [{"type": 1}]}},
+            "message.parts",
+        ),
+        (
+            {"type": "message", "message": {**USER, "parts": [{"type": "anything"}]}},
+            "message.parts",
+        ),
+        (
+            {"type": "message", "message": {**USER, "parts": [{"type": "text"}]}},
             "message.parts",
         ),
         ({"type": "tool-result"}, "turnId"),
@@ -237,7 +250,7 @@ def test_message_keeps_object_metadata_and_named_client_tools():
             "eventId": "e",
             "message": {
                 **USER,
-                "parts": [{"type": "anything", "extra": 1}],
+                "parts": [{"type": "text", "text": "hi", "extra": 1}],
                 "metadata": {"k": 1},
                 "extra": True,
             },
@@ -252,12 +265,9 @@ def test_message_keeps_object_metadata_and_named_client_tools():
     )
     assert event == InboundMessage(
         event_id="e",
-        message={
-            "id": "m",
-            "role": "user",
-            "parts": [{"type": "anything", "extra": 1}],
-            "metadata": {"k": 1},
-        },
+        message=TranscriptMessage(
+            id="m", role="user", parts=[TextPart(text="hi")], metadata={"k": 1}
+        ),
         client_tools=[
             ClientTool(name="a", description="A", input_schema={"type": "object"}),
             ClientTool(name="b"),
@@ -274,12 +284,14 @@ def test_message_drops_metadata_and_client_tools_of_the_wrong_type():
             "clientTools": {"name": "a"},
         }
     )
-    assert event == InboundMessage(event_id="e", message=USER)
+    assert event == InboundMessage(event_id="e", message=USER_MESSAGE)
     # An empty list is kept: the client advertised no tools.
     event = parse_inbound_event(
         {"type": "message", "eventId": "e", "message": USER, "clientTools": []}
     )
-    assert event == InboundMessage(event_id="e", message=USER, client_tools=[])
+    assert event == InboundMessage(
+        event_id="e", message=USER_MESSAGE, client_tools=[]
+    )
 
 
 def test_tool_results():
@@ -334,13 +346,13 @@ def test_approval_responses_and_conversation_operations():
 
 
 def server_records():
-    hi = [{"type": "text", "text": "hi"}]
+    hi = [TextPart(text="hi")]
     return {
         "snapshot": SnapshotFrame(
             conversation_id="default",
             you=Participant(id="alice"),
             operations=["conversation-create", "conversation-fork", "conversation-reset"],
-            messages=[{"id": "m1", "role": "user", "parts": []}],
+            messages=[TranscriptMessage(id="m1", role="user", parts=[])],
             turns=[QueuedTurn(turn_id="t1", started_by="t1")],
         ),
         "snapshot-client": SnapshotFrame(
@@ -355,22 +367,22 @@ def server_records():
         "ack-fork": AckFrame(conversation_id="s1", event_id="e1"),
         "messages": MessagesFrame(
             conversation_id="default",
-            messages=[{"id": "e1", "role": "user", "parts": hi}],
+            messages=[TranscriptMessage(id="e1", role="user", parts=hi)],
         ),
         "chunks": ChunksFrame(
             conversation_id="default",
             response_id="r1",
             start=0,
             chunks=[
-                {"type": "text-start", "id": "a"},
-                {"type": "text-delta", "id": "a", "delta": "He"},
+                TextStart(id="a"),
+                TextDelta(id="a", delta="He"),
             ],
         ),
         "chunks-live": ChunksFrame(
             conversation_id="default",
             response_id="r1",
             start=2,
-            chunks=[{"type": "text-delta", "id": "a", "delta": "y"}],
+            chunks=[TextDelta(id="a", delta="y")],
         ),
         "caught-up": CaughtUpFrame(conversation_id="default", response_id="r1", cursor=2),
         "end-ended": EndFrame(conversation_id="default", response_id="r1", state="ended"),

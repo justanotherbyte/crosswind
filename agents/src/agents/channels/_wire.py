@@ -1,15 +1,22 @@
-"""Records to wire form, per ``.design/utilities.md`` §5."""
+"""Records to wire form, per ``.design/utilities.md`` §5.
+
+Transcript records are written by `agents.harness.transcript.to_wire`, which
+knows their rules (a finished tool call keeps a ``null`` output).
+"""
 
 import dataclasses
 from functools import cache
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, get_args
 
 from ..core.types import JSONValue
+from ..harness.transcript import ResponseChunk, TranscriptMessage, to_wire
 
 __all__ = ("record_to_wire",)
 
 # Class constants that discriminate a union on the wire.
 _TAGS = ("type", "status", "ok")
+
+_TRANSCRIPT = (TranscriptMessage, *get_args(ResponseChunk.__value__))
 
 
 class _Field(NamedTuple):
@@ -45,6 +52,8 @@ def record_to_wire(record: Any) -> dict[str, JSONValue]:
 
 
 def _value_to_wire(value: Any) -> JSONValue:
+    if isinstance(value, _TRANSCRIPT):
+        return to_wire(value)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return record_to_wire(value)
     if isinstance(value, list):

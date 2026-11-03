@@ -18,9 +18,9 @@ from ..protocol import (
     ConversationOperation,
     InboundEvent,
     Participant,
+    ResponseChunk,
+    TranscriptMessage,
     TurnStatus,
-    WireChunk,
-    WireMessage,
     parse_inbound_event,
 )
 
@@ -142,7 +142,7 @@ class SnapshotFrame:
     conversation_id: str = wire("conversationId")
     you: Participant
     operations: list[ConversationOperation] = field(default_factory=list)
-    messages: list[WireMessage] = field(default_factory=list)
+    messages: list[TranscriptMessage] = field(default_factory=list)
     turns: list[TurnStatus] = field(default_factory=list)
     type: ClassVar[str] = "channels:snapshot"
 
@@ -177,7 +177,7 @@ class MessagesFrame:
     """
 
     conversation_id: str = wire("conversationId")
-    messages: list[WireMessage]
+    messages: list[TranscriptMessage]
     type: ClassVar[str] = "channels:messages"
 
 
@@ -200,7 +200,7 @@ class ChunksFrame:
     conversation_id: str = wire("conversationId")
     response_id: str = wire("responseId")
     start: int = wire("from")
-    chunks: list[WireChunk]
+    chunks: list[ResponseChunk]
     type: ClassVar[str] = "channels:chunks"
 
 

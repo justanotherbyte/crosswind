@@ -80,6 +80,8 @@ def test_public_classes_and_functions_have_docstrings() -> None:
 
 
 def test_channels_names_stay_out_of_the_root() -> None:
+    # Channels re-exports the transcript records, whose names chat shares.
+    transcript = set(agents.harness.transcript.__all__)
     for package in (agents.channels, agents.channels.web):
         assert isinstance(package.__all__, tuple)
-        assert not set(package.__all__) & set(agents.__all__)
+        assert not (set(package.__all__) - transcript) & set(agents.__all__)
