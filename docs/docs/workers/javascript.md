@@ -65,7 +65,8 @@ class Default(WorkerEntrypoint):
 `curl` returns `200 text/html; charset=utf-8`.
 
 Binding classes work the same way. `KVNamespace(js_kv)` wraps a JavaScript KV
-namespace, and wrapping a wrapper returns it unchanged.
+namespace, and `KVNamespace(kv)` returns `kv` unchanged when it's already a
+`KVNamespace`.
 
 ## Send requests
 
@@ -114,7 +115,8 @@ socket = sockets.connect("example.com:80")
 
 `cloudflare:workers` and `cloudflare:sockets` work anywhere, including at the
 top of a module and on Python 3.12. Other modules need Python 3.13 or later,
-and raise `ImportError` on 3.12.
+and raise `ImportError` on 3.12. On later versions they can also raise
+`ImportError` at the top of a module, so import them inside a handler.
 
 ## Convert values yourself
 

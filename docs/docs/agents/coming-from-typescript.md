@@ -124,7 +124,8 @@ type, raises `TypeError`, `ValueError` or `RuntimeError` instead.
 
 | TypeScript                                          | Status                                       |
 | --------------------------------------------------- | -------------------------------------------- |
-| MCP client and server (`addMcpServer`, `McpAgent`)  | Not ported. Connect sends an empty MCP list. |
+| `McpAgent` and MCP's RPC transport                  | Not ported. Use [`create_mcp_handler`](mcp-server.md). |
+| MCP's legacy SSE transport                          | Not ported. [`add_mcp_server`](mcp-client.md) speaks Streamable HTTP. |
 | Chat client tools and approvals                     | Not ported.                                  |
 | Recovery of interrupted chat turns                  | Not ported.                                  |
 | `props` in `routeAgentRequest` and `getAgentByName` | Not ported.                                  |

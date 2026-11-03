@@ -124,9 +124,9 @@ so this only works inside the Durable Object.
 
 ## Behaviour differences
 
-**Hooks and callbacks must be `async def`.**
-`on_start`, `on_stop`, `on_error`, `on_activity_expired`, outbound handlers and
-`schedule()` callbacks are always awaited.
+**Hooks and callbacks can be `def` or `async def`.**
+The SDK awaits what `on_start`, `on_stop`, `on_error`, `on_activity_expired`,
+outbound handlers and `schedule()` callbacks return, if it's awaitable.
 
 **`on_error` always receives an exception.**
 In a few paths, TypeScript passes a string or another non-`Error` value. Python

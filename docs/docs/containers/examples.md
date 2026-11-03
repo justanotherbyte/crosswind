@@ -247,8 +247,9 @@ class Default(WorkerEntrypoint):
 
 List every port your application needs in `required_ports`.
 `start_and_wait_for_ports()` with no arguments waits for all of them, while a
-request through `fetch()` waits only for the port it targets. `switch_port`
-picks which port a request goes to:
+request through `fetch()` waits only for the port it targets. Once the container
+is `healthy`, `fetch()` doesn't wait at all, so a request to a slower port can
+fail while that port starts. `switch_port` picks which port a request goes to:
 
 ```python
 from urllib.parse import urlparse

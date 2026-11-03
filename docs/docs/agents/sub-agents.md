@@ -130,7 +130,8 @@ each call makes one extra hop through the parent.
 ## Limits
 
 - Schedules, queue items and tasks on a sub-agent run through the root agent's
-  alarm, because a sub-agent has no alarm of its own.
+  alarm, because a sub-agent has no alarm of its own. A
+  [capability of your own](custom-capability.md) can't push jobs there yet.
 - A sub-agent's class name can't convert to `sub` in kebab case, and its
   instance name can't contain a NUL character. Both raise `ValueError`, as
   does a class that isn't in the entry module under its own name.

@@ -146,7 +146,7 @@ For a chat agent that stores messages and streams model replies, use [`AIChatAge
 
 `cf-agents` has one maintainer, so the scope is limited. Planned:
 
-- [ ] MCP
+- [x] MCP
 - [ ] Channels
 - [ ] Integration with [Agent Traces](https://developers.cloudflare.com/agents/runtime/operations/observability/tracing/)
 - [ ] A harness/opinionated framework, similar to [Think](https://developers.cloudflare.com/agents/harnesses/think/)

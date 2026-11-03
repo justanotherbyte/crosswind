@@ -74,7 +74,9 @@ config:
 `wynd dev` simulates every binding locally, so any placeholder id works until
 you deploy. Create the real resources with `uvx wynd kv namespace create`,
 `uvx wynd d1 create`, `uvx wynd r2 bucket create` and
-`uvx wynd queues create`. Wynd passes these commands to Wrangler unchanged.
+`uvx wynd queues create`. Wynd passes these commands to Wrangler with `--config`
+set to its staged copy of your config. If Wrangler writes the new binding into
+that copy, Wynd prints a warning that names what to copy into your own config.
 
 crosswind-workers picks each binding's class from its JavaScript type at
 runtime:

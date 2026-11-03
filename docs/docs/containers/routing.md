@@ -68,6 +68,15 @@ handler starts the container if needed and forwards the request to
 return await container.fetch(request)
 ```
 
+!!! warning
+    `fetch()` picks the port from the request's `cf-container-target-port`
+    header, and this call forwards the client's headers. In a public Worker,
+    a client that sends that header can reach any port in the container, such
+    as an admin or metrics server. A non-numeric value raises `ValueError`. Don't
+    rely on the platform to remove the header. Pin the port with
+    [`switch_port`](#use-switch_port-for-another-port), which replaces it:
+    `container.fetch(switch_port(request, 8080))`.
+
 ### Use `switch_port` for another port
 
 To reach a port other than `default_port`, rewrite the request with

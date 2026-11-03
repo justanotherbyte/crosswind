@@ -73,12 +73,12 @@ the SDK never starts one container twice. See
 
 The SDK counts timeouts in attempts, polling every 300 milliseconds
 (`wait_interval`). Each attempt sends one readiness request that times out
-after 5,000 milliseconds.
+after 5,000 milliseconds. Any HTTP response counts as ready, including a `503`.
 
 | Phase                 | Default budget                              | Option                    |
 | --------------------- | ------------------------------------------- | ------------------------- |
 | Get an instance       | 8,000 ms, so 27 attempts                    | `instance_get_timeout_ms` |
-| Wait for the ports    | 20,000 ms, so 67 attempts, including the attempts the instance phase used | `port_ready_timeout_ms` |
+| Wait for the ports    | 20,000 ms, so 67 attempts for each port, less the attempts the instance phase used | `port_ready_timeout_ms` |
 
 ### When a start fails or times out
 
@@ -105,8 +105,8 @@ exit with `["sh", "-c", "exit 1"]` for an exit during start.
 
 ## Run code on lifecycle events
 
-Override these `async def` methods on your subclass. The SDK awaits each one,
-so a plain `def` fails.
+Override these methods on your subclass. Each can be `async def` or a plain
+`def`, and the SDK awaits the result if it needs to.
 
 ```python
 from containers import Container
@@ -141,9 +141,13 @@ short.
 
 ### `on_stop(*, exit_code, reason)`
 
-Runs after the container process exits, whatever the cause. The SDK calls it
-at its next state check, which happens on the next alarm or the next `stop()`
-or `start_and_wait_for_ports()` call. `exit_code` is `0` for a clean exit.
+Runs after the container process exits. The SDK calls it at its next state
+check, which happens on the next alarm or the next `stop()` or
+`start_and_wait_for_ports()` call. It doesn't run when the runtime reports a
+failure with no exit code. `on_error` runs for that instead.
+
+`exit_code` is `0` for a clean exit. It's also `0` when the SDK finds the
+container gone without having seen it exit, so `0` doesn't prove a clean exit.
 `destroy()` usually reports `137` (128 + `SIGKILL`). `reason` is always
 `"exit"` in this version, as in the TypeScript SDK. The type also allows
 `"runtime_signal"`, but the SDK never passes it.

@@ -10,11 +10,11 @@ this at the top of `src/entry.py`:
 ```python
 import logging
 
-logging.basicConfig()
 logging.getLogger("agents").setLevel(logging.DEBUG)
 ```
 
-Without `basicConfig()`, Python prints only `WARNING` and above.
+On Workers, the SDK sends its logs to the JavaScript console for you. Don't add
+`logging.basicConfig()` as well, or each line appears twice.
 
 ## `Invalid request` (HTTP 400)
 

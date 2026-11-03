@@ -5,8 +5,8 @@ description: "What Wynd does, how it differs from pywrangler, what its pruning s
 
 Wynd builds, runs and deploys
 [Python Workers](https://developers.cloudflare.com/workers/languages/python/).
-It replaces pywrangler and keeps its project layout: `pyproject.toml`, a
-Wrangler config, code in `src/` and packages in `python_modules/`. Run it with
+It replaces pywrangler and keeps your project layout: `pyproject.toml`, a
+Wrangler config and code in `src/`. Packages go in `.wynd/`. Run it with
 `uvx wynd`; it runs Wrangler 4.129.0 for you. Wynd can also read configuration
 from [`cloudflare.config.py`](python-config.md).
 
@@ -22,7 +22,7 @@ uvx wynd tail     # anything else goes to Wrangler unchanged
 For `wynd dev`, Wynd reads your Wrangler config, or compiles
 `cloudflare.config.py` into one, picks the Python version the
 Worker will run on, installs your dependencies for that version into
-`python_modules/`, and starts Wrangler's dev server.
+`.wynd/run/python_modules/`, and starts Wrangler's dev server.
 
 For `wynd deploy`, `wynd versions upload` and `wynd preview`, Wynd also:
 

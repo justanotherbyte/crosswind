@@ -66,11 +66,11 @@ It writes:
 | File                   | Contents                                                                 |
 | ---------------------- | ------------------------------------------------------------------------ |
 | `cloudflare.config.py` | The Worker's config                                                      |
-| `pyproject.toml`       | `crosswind-workers` in `dependencies`, and `wynd>=0.3.0` in the `dev` group |
+| `pyproject.toml`       | `crosswind-workers` in `dependencies`, and `wynd>=<the running version>` in the `dev` group |
 | `.python-version`      | `3.14`, the Python the Worker runs                                        |
 | `src/main.py`          | A `Default` entrypoint that returns `Hello from Python!`                  |
 | `src/env.py`           | The generated `Env` class                                                 |
-| `.gitignore`           | `.venv/`, `python_modules/`, `.wynd/` and `.wynd.*wrangler.json`, added to an existing file |
+| `.gitignore`           | `.venv/` and `.wynd/`, added to an existing file |
 
 The config sets the Worker's name, entry module and compatibility date:
 
@@ -333,37 +333,43 @@ against before you commit.
 
 ## Check the compiled config
 
-Wynd compiles `cloudflare.config.py` into a Wrangler file in the same
-directory:
+Wynd compiles `cloudflare.config.py` into a Wrangler file under `.wynd/run/`:
 
-| Mode      | Compiled file                    |
-| --------- | -------------------------------- |
-| No mode   | `.wynd.wrangler.json`            |
-| `staging` | `.wynd.staging.wrangler.json`    |
+| Mode      | Compiled file                                   |
+| --------- | ----------------------------------------------- |
+| No mode   | `.wynd/run/cloudflare.config.py.json`           |
+| `staging` | `.wynd/run/cloudflare.config.py.staging.json`   |
+
+For a config in a subdirectory of the project, the path includes that directory.
 
 Every Wynd command compiles it first, passthrough commands such as
 `wynd whoami` included, so every command runs your config's Python. Wynd
 rewrites the file only when its text changes, so a running `wynd dev`
-doesn't reload when nothing changed. The `.gitignore` that `wynd init` writes
-lists `.wynd.*wrangler.json`, so these files stay out of Git.
+doesn't reload when nothing changed. The `.wynd/` line in the `.gitignore` that
+`wynd init` writes keeps these files out of Git.
 
-Because the compiled file sits beside `cloudflare.config.py`,
-`python_modules/`, `.dev.vars`, `.wrangler/` and relative paths resolve from
-the same directory as they would for a `wrangler.jsonc` there. Wrangler's own
-config search doesn't look for these names, so plain `npx wrangler` in the
-directory ignores them.
+`.wynd/run/` stands in for the config's directory, as
+[Where Wynd keeps files](commands.md#where-wynd-keeps-files) describes, and Wynd
+rewrites relative paths so they still resolve from there. Plain `npx wrangler`
+doesn't look in `.wynd/`, so it ignores these files.
+
+A running `wynd dev` watches `cloudflare.config.py` and compiles it again when
+you save, and Wrangler reloads. A broken edit prints the error, and `wynd dev`
+keeps serving the last good config. A reload doesn't reinstall packages or
+rewrite `env.py`, so restart `wynd dev` after you change the compatibility date,
+flags or bindings.
 
 To see what Wrangler gets, run any command and open the file:
 
 ```sh
 uvx wynd types -e staging
-cat .wynd.staging.wrangler.json
+cat .wynd/run/cloudflare.config.py.staging.json
 ```
 
-```json title=".wynd.staging.wrangler.json"
+```json title=".wynd/run/cloudflare.config.py.staging.json"
 {
   "name": "counter-staging",
-  "main": "src/main.py",
+  "main": "../../src/main.py",
   "compatibility_date": "2026-09-08",
   "compatibility_flags": [
     "python_workers"
@@ -443,9 +449,8 @@ Workers runtime.
    section as a branch on the mode, and each Durable Object class in
    `migrations` as its state in `exports`.
 2. Delete the Wrangler file, since Wynd refuses a directory with both.
-3. Add `.wynd.*wrangler.json` to `.gitignore`.
-4. Run `uv add --dev wynd`, so your editor resolves `wynd.config`.
-5. Run `uvx wynd deploy --dry-run` for each mode, and compare Wrangler's
+3. Run `uv add --dev wynd`, so your editor resolves `wynd.config`.
+4. Run `uvx wynd deploy --dry-run` for each mode, and compare Wrangler's
    bindings list with the one your Wrangler file gave.
 
 Read the Durable Object warning under [Exports](#exports) before you deploy.
@@ -472,9 +477,9 @@ one message, so you can fix them all at once.
 Any other exception in your config, such as a `NameError`, prints Python's
 traceback, which ends at the line in `cloudflare.config.py`.
 
-Errors Wynd finds after compiling, such as a bad source directory, name the
-compiled file, for example
-`main and base_dir must point into a subdirectory beside .wynd.wrangler.json`.
+Errors Wynd finds after compiling, such as a bad source directory, name your
+config file, for example
+`main and base_dir must point into a subdirectory beside cloudflare.config.py`.
 Fix them in `cloudflare.config.py`. [Troubleshoot Wynd errors](troubleshooting.md)
 lists them.
 
@@ -486,8 +491,6 @@ lists them.
 - Wrangler's `migrations`, `env` sections, `unsafe` and per-binding `dev`
   settings.
 - `.dev.vars.<mode>` files. Wrangler reads `.dev.vars` in every mode.
-- Reloading on a config change. After you edit `cloudflare.config.py`,
-  stop `wynd dev` and start it again.
 - Importing one `cloudflare.config.py` from another, since the dotted file
   name can't be imported.
 - Running without Wynd. Plain `wrangler` doesn't read `cloudflare.config.py`.

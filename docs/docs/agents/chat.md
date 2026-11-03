@@ -280,4 +280,5 @@ Both go in `AIChatAgentOptions`. What you send to the model is up to
   or retry that turn.
 - `chatStreamStallTimeoutMs`, the watchdog that aborts a turn when chunks stop
   arriving.
-- MCP tools.
+- Passing MCP tools to the model for you. [Connect to MCP servers](mcp-client.md#give-the-tools-to-a-model)
+  shows how to build their schemas yourself.

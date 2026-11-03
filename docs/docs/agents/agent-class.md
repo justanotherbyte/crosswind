@@ -41,6 +41,7 @@ its parent's. To extend them, use
 | `fiber_recovery_scan_deadline`   | `Duration`         | `10`             | Soft deadline for one fiber-recovery scan.                                 |
 | `fiber_recovery_max_age`         | `Duration \| None` | 24 hours         | When to stop retrying a failed recovery. `None` retries forever.           |
 | `max_alarm_memory_limit_strikes` | `int`              | `3`              | Alarm memory-limit resets tolerated before recovery work stops.            |
+| `mcp`                            | `MCPOptions \| None` | `None`           | Turns on the [MCP client](mcp-client.md#mcpoptions). |
 | `expose_error_details`           | `bool`             | `False`          | Put an unhandled error's traceback in the `500` body. Local development only. |
 
 ### `RetryOptions`
@@ -97,6 +98,8 @@ so does the request, message or alarm that woke the agent.
 | `tasks`                    | `Tasks`                   | Durable task runs. See [Run durable tasks](tasks.md). |
 | `dynamic_agents`           | `DynamicAgents`           | This agent's sub-agents.                                 |
 | `parent_path`, `self_path` | `Sequence[AgentPathStep]` | Agents from the root down. Empty on a root.              |
+| `lifecycle`                | `Lifecycle`               | What the capabilities are installed on. See [Lifecycle and capabilities](lifecycle-class.md). |
+| `mcp`                      | `MCPClientManager`        | The [MCP client](mcp-client.md). Raises `MCPNotEnabledError` unless `options.mcp` is set. |
 | `session_affinity`         | `str`                     | The Durable Object id as a string. Stable per instance.  |
 
 ## State
@@ -220,6 +223,28 @@ The callback is called as `callback(payload, item)`. Queuing an existing `id`
 replaces that pending item. A blank `id` or an unknown callback raises
 `ValueError`. `QueueItem` has `id`, `callback`, `payload`, `created_at` and
 `retry`.
+
+## Capabilities
+
+### `use`
+
+```python
+def use[C: LifecycleCapability](self, capability: C) -> C
+```
+
+Installs a [capability](custom-capability.md) and returns it. Call it in `__init__`. After startup it raises `RuntimeError`, as it does for an id that's already installed.
+
+## MCP
+
+| Method | Description |
+| ------ | ----------- |
+| `async add_mcp_server(name, url, *, id=None, headers=None, transport="auto", callback_host=None, callback_path=None, agents_prefix="agents", retry=None)` | Stores a server, connects and loads its catalog. See [Connect to MCP servers](mcp-client.md#add-a-server). |
+| `async remove_mcp_server(id)` | Closes a server's connection and deletes it and its OAuth state. |
+| `get_mcp_servers()` | What the `cf_agent_mcp_servers` frame carries. |
+| `async on_mcp_oauth_callback(result, request)` | A hook. Return a `Response` to replace the redirect after OAuth. |
+| `create_mcp_oauth_provider(callback_url)` | A hook. Return your own `MCPOAuthProvider`. |
+
+Without `options.mcp`, `add_mcp_server`, `remove_mcp_server` and `get_mcp_servers` raise `MCPNotEnabledError`.
 
 ## Fibers and keep-alive
 
@@ -374,12 +399,12 @@ JSON line to the `agents.events` logger at `DEBUG`. To see them:
 ```python
 import logging
 
-logging.basicConfig()
 logging.getLogger("agents.events").setLevel(logging.DEBUG)
 ```
 
-Without a handler such as the one `basicConfig()` adds, Python prints only
-`WARNING` and above, so the events don't appear.
+On Workers, the SDK sends its logs to the JavaScript console for you. Don't add
+`logging.basicConfig()` as well, or each line appears twice.
 
 To send events elsewhere, set `observability` to an object with an
-`emit(event: ObservabilityEvent)` method.
+`emit(event: ObservabilityEvent)` method. See
+[Observe an agent](observability.md), which also lists every event.

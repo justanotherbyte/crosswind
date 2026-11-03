@@ -45,7 +45,11 @@ markdown_extensions:
   - tables
   - pymdownx.tasklist:
       custom_checkbox: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 nav:
@@ -63,14 +67,23 @@ nav:
       - Run durable tasks: agents/tasks.md
       - Build a chat agent: agents/chat.md
       - Run a Pydantic AI agent: agents/pydantic-ai.md
-      - How a harness works: agents/harness.md
       - Write your own harness: agents/custom-harness.md
+      - Build a capability: agents/custom-capability.md
+      - Connect to MCP servers: agents/mcp-client.md
+      - Host an MCP server: agents/mcp-server.md
+      - Store sessions and streams: agents/sessions-and-streams.md
+      - Observe an agent: agents/observability.md
       - Long-running work: agents/long-running-work.md
       - Use sub-agents: agents/sub-agents.md
       - Migrate from TypeScript: agents/coming-from-typescript.md
+    - Concepts:
+      - How an agent is built: agents/architecture.md
+      - How a harness works: agents/harness.md
     - Reference:
       - Agent class: agents/agent-class.md
       - AIChatAgent class: agents/chat-agent-class.md
+      - Harness class: agents/harness-class.md
+      - Lifecycle and capabilities: agents/lifecycle-class.md
       - Generated API: agents/generated-api.md
       - Troubleshooting: agents/troubleshooting.md
   - Containers:
@@ -96,6 +109,7 @@ nav:
     - Reference:
       - API reference: sandboxes/api.md
       - Generated API: sandboxes/generated-api.md
+      - Troubleshooting: sandboxes/troubleshooting.md
   - Workers:
     - Overview: workers/overview.md
     - Getting started: workers/getting-started.md

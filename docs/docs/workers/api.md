@@ -171,6 +171,7 @@ defaults to `200`. `web_socket` is the client end of a `WebSocketPair`, for a
 | Member                                                            | Description                                                         |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `Response.json(data, status=200, status_text="", headers=None)`   | A response with `data` serialized by `json.dumps`. Sets `content-type: application/json` unless `headers` has a `content-type`. |
+| `Response.from_json(data, status=200, status_text="", headers=None)` | The same as `Response.json`, under a name a type checker reads as a constructor. |
 | `Response.redirect(url, status=302)`                              | A redirect response. A status other than 301, 302, 303, 307 or 308 raises `ValueError`. |
 | `replace_body(body)`                                              | A new `Response` with this one's status and headers.                |
 | `status`, `status_text`, `ok`, `url`, `headers`, `body`           | Properties of the response. `body` is `None` for a response with no body. |
@@ -466,7 +467,7 @@ results.
 `python_from_rpc(value)` converts the other way. A plain object becomes a
 `JsDict`, a `dict` whose keys also read as attributes, so `result.meta` and
 `result["meta"]` are the same. `null` and `undefined` become `None`, a `Date`
-becomes a `datetime`, a `Uint8Array` becomes a `memoryview`, an `Error`
+becomes a naive `datetime`, a `Uint8Array` becomes a `memoryview`, an `Error`
 becomes an `Exception`, and a JavaScript `Request`, `Response`, `FormData`,
 `Blob` or `File` becomes the crosswind class.
 
@@ -476,14 +477,17 @@ becomes an `Exception`, and a JavaScript `Request`, `Response`, `FormData`,
 
 | Name                                         | Description                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `async fetch(app, req, env, ctx=None)`       | Runs the ASGI `app` on `req` and returns a JavaScript `Response`. The scope has the env under `"env"`. |
+| `async fetch(app, req, env, ctx=None, *, options=None)` | Runs the ASGI `app` on `req` and returns a JavaScript `Response`. The scope has the env under `"env"`. |
 | `async websocket(app, req, env=None, ctx=None)` | Runs a WebSocket connection through `app` and returns the `101` response.          |
-| `entrypoint(app)`                            | A `WorkerEntrypoint` subclass that calls `websocket` for upgrade requests and `fetch` otherwise, passing `self.ctx` to both. |
+| `entrypoint(app, *, options=None)`           | A `WorkerEntrypoint` subclass that calls `websocket` for upgrade requests and `fetch` otherwise, passing `self.ctx` to both. |
 | `env`                                        | A FastAPI dependency that returns the Worker's env. Reading it without FastAPI installed raises `ImportError`. |
 
 `fetch` runs the app's lifespan startup before each request and its shutdown
 after the response. It reads the whole request body before the app runs. The
 scope has no `client`, `server` or `root_path` keys.
+
+`options` takes a `workers.asgi.Options`. See
+[Compressed responses](web-frameworks.md#compressed-responses).
 
 `import asgi` imports the same module, as in the stock SDK.
 
@@ -491,9 +495,10 @@ scope has no `client`, `server` or `root_path` keys.
 
 | Name                                         | Description                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `async fetch(app, req, env, ctx=None)`       | Runs the WSGI `app` on `req` and returns a JavaScript `Response`. The environ has the env under `"workers.env"`. |
-| `entrypoint(app)`                            | A `WorkerEntrypoint` subclass that calls `fetch`. It has no WebSocket support.        |
+| `async fetch(app, req, env, ctx=None, *, options=None)` | Runs the WSGI `app` on `req` and returns a JavaScript `Response`. The environ has the env under `"workers.env"`. |
+| `entrypoint(app, *, options=None)`           | A `WorkerEntrypoint` subclass that calls `fetch`. It has no WebSocket support.        |
 
 The app runs synchronously inside the request. On Python 3.13 and later,
 `wsgi.input` streams the body as the app reads it. Python 3.12 has no
-`run_sync`, so there the adapter reads the whole body first.
+`run_sync`, so there the adapter reads the whole body first. `options` takes a
+`workers.wsgi.Options`, as for ASGI.
