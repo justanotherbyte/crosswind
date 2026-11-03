@@ -65,6 +65,12 @@ replace the class attributes of the same name for that start. These apply only
 when the call starts the container. If it's already running, the SDK ignores
 them.
 
+!!! warning
+    A per-start `enable_internet` only reaches the runtime. If the class
+    uses outbound handlers or host lists, `ContainerProxy` still decides with
+    the class value. See
+    [Per-start `enable_internet`](troubleshooting.md#per-start-enable_internet-and-outbound-rules).
+
 Requests that arrive while a container is starting wait for the same start, so
 the SDK never starts one container twice. See
 [Start and stop](container-class.md#start-and-stop) for every option.
@@ -92,6 +98,7 @@ container:
 | The process exited while the SDK waited for a port | The last connection error. `on_error()` receives `Container crashed while checking for ports, ...`                                  | `"running"` until the SDK next checks the state, then `on_stop()` runs |
 | A port didn't answer within the budget        | The last connection error. `on_error()` receives `Failed to verify port <port> is available after <n>ms, last error: ...`               | `"running"`                        |
 | `abort` was set                               | `RuntimeError: Aborted waiting for container to start as we received a cancellation signal`, or `RuntimeError: Container request aborted.` while it waits for ports | `"running"`                        |
+| The last attempt lost its network connection   | The SDK calls `self.ctx.abort()` to reset the Durable Object before anything else | Not updated by the failed start    |
 
 After a port timeout the container keeps running. The next request or
 `start_and_wait_for_ports()` call waits for the port again without restarting
@@ -130,7 +137,9 @@ class MyContainer(Container):
 
 Runs after a successful `start()` or `start_and_wait_for_ports()`, including
 the start inside `fetch()`. An explicit start call runs it even when the
-container was already running, so make it safe to run twice. For example,
+container was already running, so make it safe to run twice. It also runs
+again on the first request after `start()`, because `start()` leaves the
+state at `running` and the request waits for its port. For example,
 check `list_schedules()` before you schedule a task from it, or each call adds
 another copy.
 
@@ -191,16 +200,16 @@ Work the SDK can't see, such as a background job the container started on its
 own, doesn't reset the timer. Call `self.renew_activity_timeout()` from your
 subclass while that work runs. It's a plain method, so don't await it.
 
-> **Warning**
->
-> If you override `on_activity_expired`, call `await self.stop()` or
-> `await self.destroy()` in it. When the hook returns without stopping the
-> container, the SDK renews the timer and calls the hook again after another
-> `sleep_after`, so the container never sleeps.
+!!! warning
+    If you override `on_activity_expired`, call `await self.stop()` or
+    `await self.destroy()` in it. When the hook returns without stopping the
+    container, the SDK renews the timer and calls the hook again after another
+    `sleep_after`, so the container never sleeps.
 
 The SDK checks the timer from the Durable Object
 [alarm](https://developers.cloudflare.com/durable-objects/api/alarms/), so
-don't override `alarm()`. Use [`schedule()`](container-class.md#scheduling)
+don't override `alarm()`. [One alarm](architecture.md#one-alarm) explains
+how the SDK uses it. Use [`schedule()`](container-class.md#scheduling)
 for your own timed work.
 
 ## Stop a container

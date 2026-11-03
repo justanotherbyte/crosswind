@@ -10,7 +10,10 @@ that manages one container instance. Set its class attributes and override
 the hooks you need. You can also use the base `DurableObject` attributes,
 including `self.ctx`, `self.env` and
 [SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
-through `self.ctx.storage`.
+through `self.ctx.storage`. With `crosswind-workers`, these are the objects
+described in [Build a Durable Object](../workers/durable-objects.md). The SDK
+keeps its own records in the same storage, under the names in
+[What the SDK stores](architecture.md#what-the-sdk-stores).
 
 ```python
 from containers import Container
