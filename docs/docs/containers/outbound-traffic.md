@@ -40,6 +40,11 @@ class Sandbox(Container):
 The container can then only reach hosts you allow, or hosts an outbound handler
 answers for.
 
+Set it on the class, or in `__init__` to compute it per instance. A value
+passed to `start()` or `start_and_wait_for_ports()` doesn't reach
+`ContainerProxy`. See
+[Per-start `enable_internet`](troubleshooting.md#per-start-enable_internet-and-outbound-rules).
+
 ## Allow and deny hosts
 
 `allowed_hosts` is an allowlist. When it's set, the container can't reach any
@@ -345,4 +350,5 @@ rule that applies decides what happens:
     to those hosts go through `ContainerProxy`. Anything else, such as a
     catch-all, a host list or any runtime change, routes all of the
     container's HTTP traffic through it. That stays in place after the container
-    restarts, because the SDK saves it in the Durable Object.
+    restarts, because the SDK saves it in the Durable Object. See
+    [Outbound rules and ContainerProxy](architecture.md#outbound-rules-and-containerproxy).

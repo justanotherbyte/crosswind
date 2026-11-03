@@ -171,6 +171,53 @@ close WebSockets the client no longer uses. To confirm, log from
 
 **Fix.** Press `r` in the `dev` session to rebuild it.
 
+## Known limitations
+
+These come from how the SDK works today, not from your configuration.
+
+### Per-start `enable_internet` and outbound rules
+
+`start(enable_internet=...)` and `start_and_wait_for_ports(enable_internet=...)`
+set the option the runtime starts the container with. `ContainerProxy` doesn't
+see that value. When it reaches the last step of the
+[precedence order](outbound-traffic.md#precedence) and decides whether a
+request may go out, it uses the class attribute, or the value set in
+`__init__`.
+
+So on a class that uses outbound handlers, host lists or runtime rule changes,
+requests that `ContainerProxy` handles follow the class's `enable_internet`,
+whatever the start call passed. To change it for some instances, set
+`self.enable_internet` in `__init__`, or pass `enable_internet=` to
+`super().__init__()`.
+
+### Sandboxes intercepts and intercept-all
+
+[`S3Mount`](../sandboxes/s3-mounts.md) and
+[`DirectoryBackup`](../sandboxes/backups.md) from `crosswind-sandboxes`
+register an intercept for their gateway on `self.ctx.container`, and they
+must do it before anything registers the catch-all
+`interceptAllOutboundHttp()`.
+
+A `Container` class in [intercept-all
+mode](architecture.md#outbound-rules-and-containerproxy) registers that
+catch-all before it starts the container, and again after every runtime rule
+change. The sandboxes classes need a running container, so in a `Container`
+subclass their intercept always comes after that catch-all. Intercept-all
+mode applies when
+the class has a catch-all `outbound`, `allowed_hosts` or `denied_hosts`, or
+rules changed at runtime.
+
+A class with no catch-all, no host list and no runtime rule changes doesn't
+register the catch-all, so this conflict doesn't arise there.
+
+### Two `Container` classes with the same name
+
+`ContainerProxy` finds outbound handlers by class name. If two `Container`
+subclasses in one Worker have the same name, even in different modules, the
+one Python defines last wins, and the other class's containers get its
+`outbound`, `outbound_by_host` and `outbound_handlers`. Give each class its
+own name.
+
 ## Read the SDK's logs
 
 The SDK logs to the `containers.container` logger with the standard

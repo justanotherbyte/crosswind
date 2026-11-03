@@ -56,6 +56,8 @@ to `get_container` decides which instance serves a request:
 
 The Durable Object also stores the container's state, its schedules and its
 outbound rules in SQLite, so they survive the Durable Object leaving memory.
+[How a container is managed](architecture.md) explains what the class does
+between requests.
 
 ## When to use it
 
