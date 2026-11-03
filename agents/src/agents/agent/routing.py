@@ -39,6 +39,9 @@ __all__ = (
 
 _log = logging.getLogger("agents.routing")
 
+# Set by a trusted gateway in front of the agent; a client must not set it.
+CHANNELS_IDENTITY_HEADER = "x-channels-identity"
+
 _PERMISSIVE_CORS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS",
@@ -136,6 +139,7 @@ async def route_agent_request(
         if isinstance(outcome, Request):
             request = outcome
 
+    request = _without_channels_identity(request)
     stub = _stub(namespace, name, jurisdiction, location_hint)
     response = await _with_routing_retry(
         lambda: stub.fetch(_ffi.clone_request(request)),
@@ -218,7 +222,7 @@ async def route_sub_agent_request(
         if from_path is not None
         else request
     )
-    return await parent.fetch(forward)
+    return await parent.fetch(_without_channels_identity(forward))
 
 
 async def get_sub_agent_by_name(parent: Any, cls: type, name: str) -> SubAgentStub:
@@ -236,6 +240,12 @@ async def get_sub_agent_by_name(parent: Any, cls: type, name: str) -> SubAgentSt
     if "\0" in name:
         raise ValueError("Sub-agent names can't contain NUL (\\0)")
     return SubAgentStub(parent, cls.__name__, name)
+
+
+def _without_channels_identity(request: Request) -> Request:
+    if request.headers.get(CHANNELS_IDENTITY_HEADER) is None:
+        return request
+    return _ffi.request_with(request, drop=CHANNELS_IDENTITY_HEADER)
 
 
 def _durable_object_bindings(env: Any) -> dict[str, tuple[str, Any]]:
