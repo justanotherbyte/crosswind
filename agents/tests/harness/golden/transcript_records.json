@@ -1,0 +1,442 @@
+{
+  "messages": [
+    {
+      "id": "u1",
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "What's in this picture?"
+        },
+        {
+          "type": "file",
+          "mediaType": "image/png",
+          "url": "https://example.com/cat.png",
+          "filename": "cat.png"
+        }
+      ]
+    },
+    {
+      "id": "s1",
+      "role": "system",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Handoff: the user prefers metric units."
+        }
+      ]
+    },
+    {
+      "id": "u1:reply",
+      "role": "assistant",
+      "metadata": {
+        "model": "m",
+        "usage": {
+          "inputTokens": 3
+        }
+      },
+      "parts": [
+        {
+          "type": "reasoning",
+          "text": "Looking at it.",
+          "providerMetadata": {
+            "pydanticAi": {
+              "signature": "sig"
+            }
+          }
+        },
+        {
+          "type": "text",
+          "text": "A cat.",
+          "providerMetadata": {
+            "openai": {
+              "itemId": "i1"
+            }
+          }
+        },
+        {
+          "type": "file",
+          "mediaType": "image/png",
+          "url": "data:image/png;base64,AA=="
+        },
+        {
+          "type": "source-url",
+          "sourceId": "s1",
+          "url": "https://example.com",
+          "title": "Example",
+          "providerMetadata": {
+            "p": {}
+          }
+        },
+        {
+          "type": "source-url",
+          "sourceId": "s2",
+          "url": "https://example.org"
+        },
+        {
+          "type": "source-document",
+          "sourceId": "s3",
+          "mediaType": "application/pdf",
+          "title": "Doc",
+          "filename": "doc.pdf",
+          "providerMetadata": {
+            "p": {}
+          }
+        },
+        {
+          "type": "source-document",
+          "sourceId": "s4",
+          "mediaType": "text/plain",
+          "title": "Notes"
+        },
+        {
+          "type": "data",
+          "name": "progress",
+          "id": "p1",
+          "data": {
+            "done": 3
+          }
+        },
+        {
+          "type": "data",
+          "name": "empty",
+          "data": null
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c0",
+          "toolName": "search",
+          "state": "input-streaming"
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c1",
+          "toolName": "search",
+          "state": "input-available",
+          "input": {
+            "q": "cat"
+          },
+          "title": "Search",
+          "dynamic": true,
+          "providerMetadata": {
+            "p": {
+              "k": 1
+            }
+          }
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c2",
+          "toolName": "getLocation",
+          "state": "input-available",
+          "input": {},
+          "owner": "alice"
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c3",
+          "toolName": "delete",
+          "state": "approval-requested",
+          "input": {
+            "id": 3
+          },
+          "approval": {
+            "id": "c3"
+          }
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c4",
+          "toolName": "delete",
+          "state": "approval-responded",
+          "input": {
+            "id": 4
+          },
+          "approval": {
+            "id": "c4",
+            "approved": true
+          }
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c5",
+          "toolName": "search",
+          "state": "output-available",
+          "input": {
+            "q": "x"
+          },
+          "output": [
+            "x"
+          ],
+          "preliminary": true
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c6",
+          "toolName": "noop",
+          "state": "output-available",
+          "input": {},
+          "output": null
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c7",
+          "toolName": "web_search",
+          "state": "output-available",
+          "input": {
+            "query": "q"
+          },
+          "output": {
+            "results": []
+          },
+          "providerExecuted": true
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c8",
+          "toolName": "search",
+          "state": "output-error",
+          "input": {
+            "q": "x"
+          },
+          "errorText": "boom"
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c9",
+          "toolName": "delete",
+          "state": "output-denied",
+          "input": {
+            "id": 9
+          },
+          "approval": {
+            "id": "c9",
+            "approved": false,
+            "reason": "Not that one"
+          }
+        }
+      ]
+    }
+  ],
+  "chunks": [
+    {
+      "type": "text-start",
+      "id": "0:0"
+    },
+    {
+      "type": "text-start",
+      "id": "0:0",
+      "providerMetadata": {
+        "p": {
+          "a": 1
+        }
+      }
+    },
+    {
+      "type": "text-delta",
+      "id": "0:0",
+      "delta": "Hi"
+    },
+    {
+      "type": "text-end",
+      "id": "0:0"
+    },
+    {
+      "type": "text-end",
+      "id": "0:0",
+      "providerMetadata": {
+        "p": {
+          "b": 2
+        }
+      }
+    },
+    {
+      "type": "reasoning-start",
+      "id": "0:1"
+    },
+    {
+      "type": "reasoning-start",
+      "id": "0:1",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "reasoning-delta",
+      "id": "0:1",
+      "delta": "hmm"
+    },
+    {
+      "type": "reasoning-end",
+      "id": "0:1"
+    },
+    {
+      "type": "reasoning-end",
+      "id": "0:1",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "tool-input-start",
+      "toolCallId": "c1",
+      "toolName": "search"
+    },
+    {
+      "type": "tool-input-start",
+      "toolCallId": "c2",
+      "toolName": "getLocation",
+      "owner": "alice",
+      "providerExecuted": false,
+      "dynamic": true,
+      "title": "Where"
+    },
+    {
+      "type": "tool-input-delta",
+      "toolCallId": "c1",
+      "delta": "{\"q\":"
+    },
+    {
+      "type": "tool-input-available",
+      "toolCallId": "c1",
+      "toolName": "search",
+      "input": {
+        "q": "x"
+      }
+    },
+    {
+      "type": "tool-input-available",
+      "toolCallId": "c2",
+      "toolName": "getLocation",
+      "input": null,
+      "owner": "alice",
+      "providerExecuted": false,
+      "dynamic": true,
+      "title": "Where",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "tool-input-error",
+      "toolCallId": "c3",
+      "toolName": "search",
+      "input": "{bad",
+      "errorText": "Invalid JSON"
+    },
+    {
+      "type": "tool-input-error",
+      "toolCallId": "c4",
+      "toolName": "search",
+      "input": {},
+      "errorText": "Missing q",
+      "providerExecuted": true,
+      "dynamic": false,
+      "title": "Search"
+    },
+    {
+      "type": "tool-approval-request",
+      "toolCallId": "c5",
+      "approvalId": "a5"
+    },
+    {
+      "type": "tool-output-available",
+      "toolCallId": "c1",
+      "output": [
+        "x"
+      ]
+    },
+    {
+      "type": "tool-output-available",
+      "toolCallId": "c1",
+      "output": null,
+      "preliminary": true,
+      "providerExecuted": true
+    },
+    {
+      "type": "tool-output-error",
+      "toolCallId": "c1",
+      "errorText": "boom"
+    },
+    {
+      "type": "tool-output-error",
+      "toolCallId": "c1",
+      "errorText": "boom",
+      "providerExecuted": true
+    },
+    {
+      "type": "tool-output-denied",
+      "toolCallId": "c5"
+    },
+    {
+      "type": "file",
+      "mediaType": "image/png",
+      "url": "data:image/png;base64,AA=="
+    },
+    {
+      "type": "file",
+      "mediaType": "image/png",
+      "url": "https://example.com/a.png",
+      "filename": "a.png",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "source-url",
+      "sourceId": "s1",
+      "url": "https://example.com"
+    },
+    {
+      "type": "source-url",
+      "sourceId": "s1",
+      "url": "https://example.com",
+      "title": "Example",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "source-document",
+      "sourceId": "s2",
+      "mediaType": "application/pdf",
+      "title": "Doc"
+    },
+    {
+      "type": "source-document",
+      "sourceId": "s2",
+      "mediaType": "application/pdf",
+      "title": "Doc",
+      "filename": "doc.pdf",
+      "providerMetadata": {
+        "p": {}
+      }
+    },
+    {
+      "type": "data",
+      "name": "progress",
+      "data": {
+        "n": 1
+      }
+    },
+    {
+      "type": "data",
+      "name": "progress",
+      "id": "p",
+      "data": null,
+      "transient": true
+    },
+    {
+      "type": "metadata",
+      "metadata": {}
+    },
+    {
+      "type": "metadata",
+      "metadata": {
+        "usage": {
+          "outputTokens": 5
+        }
+      }
+    }
+  ]
+}

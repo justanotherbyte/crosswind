@@ -1,0 +1,695 @@
+[
+  {
+    "name": "provider metadata from a part's start and end (upstream apply-chunks.test.ts)",
+    "message": {
+      "id": "m1",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "reasoning-start",
+        "id": "r",
+        "providerMetadata": {
+          "a": 1
+        }
+      },
+      {
+        "type": "reasoning-delta",
+        "id": "r",
+        "delta": "thinking"
+      },
+      {
+        "type": "reasoning-end",
+        "id": "r",
+        "providerMetadata": {
+          "b": 2
+        }
+      },
+      {
+        "type": "text-start",
+        "id": "t"
+      },
+      {
+        "type": "text-delta",
+        "id": "t",
+        "delta": "Hi"
+      },
+      {
+        "type": "text-end",
+        "id": "t"
+      }
+    ],
+    "expected": {
+      "id": "m1",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "reasoning",
+          "text": "thinking",
+          "providerMetadata": {
+            "a": 1,
+            "b": 2
+          }
+        },
+        {
+          "type": "text",
+          "text": "Hi"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text and reasoning ids are separate",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "text-start",
+        "id": "0"
+      },
+      {
+        "type": "reasoning-start",
+        "id": "0"
+      },
+      {
+        "type": "reasoning-delta",
+        "id": "0",
+        "delta": "why"
+      },
+      {
+        "type": "text-delta",
+        "id": "0",
+        "delta": "what"
+      },
+      {
+        "type": "text-end",
+        "id": "0"
+      },
+      {
+        "type": "reasoning-end",
+        "id": "0"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "what"
+        },
+        {
+          "type": "reasoning",
+          "text": "why"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a delta for a closed part is dropped",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "text-start",
+        "id": "t"
+      },
+      {
+        "type": "text-delta",
+        "id": "t",
+        "delta": "a"
+      },
+      {
+        "type": "text-end",
+        "id": "t"
+      },
+      {
+        "type": "text-delta",
+        "id": "t",
+        "delta": "b"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "a"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a part left open keeps its text",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "text-start",
+        "id": "t"
+      },
+      {
+        "type": "text-delta",
+        "id": "t",
+        "delta": "partial"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "partial"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a tool call streams, runs, and returns",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-start",
+        "toolCallId": "c1",
+        "toolName": "search",
+        "title": "Search"
+      },
+      {
+        "type": "tool-input-delta",
+        "toolCallId": "c1",
+        "delta": "{\"q\":"
+      },
+      {
+        "type": "tool-input-delta",
+        "toolCallId": "c1",
+        "delta": "\"x\"}"
+      },
+      {
+        "type": "tool-input-available",
+        "toolCallId": "c1",
+        "toolName": "search",
+        "input": {
+          "q": "x"
+        },
+        "providerMetadata": {
+          "p": {
+            "k": 1
+          }
+        }
+      },
+      {
+        "type": "tool-output-available",
+        "toolCallId": "c1",
+        "output": [
+          "x"
+        ]
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "search",
+          "title": "Search",
+          "type": "tool",
+          "state": "output-available",
+          "input": {
+            "q": "x"
+          },
+          "providerMetadata": {
+            "p": {
+              "k": 1
+            }
+          },
+          "output": [
+            "x"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a preliminary output is replaced by the final one",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-available",
+        "toolCallId": "c1",
+        "toolName": "t",
+        "input": {}
+      },
+      {
+        "type": "tool-output-available",
+        "toolCallId": "c1",
+        "output": "half",
+        "preliminary": true
+      },
+      {
+        "type": "tool-output-available",
+        "toolCallId": "c1",
+        "output": "all"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "t",
+          "input": {},
+          "type": "tool",
+          "state": "output-available",
+          "output": "all"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a tool input error closes a call that never opened",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-error",
+        "toolCallId": "c1",
+        "toolName": "t",
+        "input": "{bad",
+        "errorText": "Invalid JSON",
+        "dynamic": true
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "t",
+          "input": "{bad",
+          "errorText": "Invalid JSON",
+          "dynamic": true,
+          "type": "tool",
+          "state": "output-error"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a client tool call keeps its owner",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-start",
+        "toolCallId": "c1",
+        "toolName": "getLocation",
+        "owner": "alice"
+      },
+      {
+        "type": "tool-input-available",
+        "toolCallId": "c1",
+        "toolName": "getLocation",
+        "input": {}
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "getLocation",
+          "owner": "alice",
+          "type": "tool",
+          "state": "input-available",
+          "input": {}
+        }
+      ]
+    }
+  },
+  {
+    "name": "an approval request then a denial",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-available",
+        "toolCallId": "c1",
+        "toolName": "delete",
+        "input": {
+          "id": 3
+        }
+      },
+      {
+        "type": "tool-approval-request",
+        "toolCallId": "c1",
+        "approvalId": "a1"
+      },
+      {
+        "type": "tool-output-denied",
+        "toolCallId": "c1"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "delete",
+          "input": {
+            "id": 3
+          },
+          "type": "tool",
+          "state": "output-denied",
+          "approval": {
+            "id": "a1"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "a tool output error",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-input-available",
+        "toolCallId": "c1",
+        "toolName": "t",
+        "input": {},
+        "providerExecuted": true
+      },
+      {
+        "type": "tool-output-error",
+        "toolCallId": "c1",
+        "errorText": "boom",
+        "providerExecuted": true
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "toolCallId": "c1",
+          "toolName": "t",
+          "input": {},
+          "providerExecuted": true,
+          "type": "tool",
+          "state": "output-error",
+          "errorText": "boom"
+        }
+      ]
+    }
+  },
+  {
+    "name": "output for an unknown call is dropped",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "tool-output-available",
+        "toolCallId": "nope",
+        "output": 1
+      },
+      {
+        "type": "tool-approval-request",
+        "toolCallId": "nope",
+        "approvalId": "a"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    }
+  },
+  {
+    "name": "data parts upsert by name and id; transient and id-less data",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "data",
+        "name": "progress",
+        "id": "p",
+        "data": {
+          "n": 1
+        }
+      },
+      {
+        "type": "data",
+        "name": "progress",
+        "id": "p",
+        "data": {
+          "n": 2
+        }
+      },
+      {
+        "type": "data",
+        "name": "note",
+        "data": "a"
+      },
+      {
+        "type": "data",
+        "name": "note",
+        "data": "b"
+      },
+      {
+        "type": "data",
+        "name": "ping",
+        "data": null,
+        "transient": true
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "data",
+          "name": "progress",
+          "id": "p",
+          "data": {
+            "n": 2
+          }
+        },
+        {
+          "type": "data",
+          "name": "note",
+          "data": "a"
+        },
+        {
+          "type": "data",
+          "name": "note",
+          "data": "b"
+        }
+      ]
+    }
+  },
+  {
+    "name": "metadata merges into the message's",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [],
+      "metadata": {
+        "a": 1,
+        "b": 1
+      }
+    },
+    "chunks": [
+      {
+        "type": "metadata",
+        "metadata": {
+          "b": 2
+        }
+      },
+      {
+        "type": "metadata",
+        "metadata": {
+          "c": 3
+        }
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [],
+      "metadata": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+      }
+    }
+  },
+  {
+    "name": "files and sources are appended as parts",
+    "message": {
+      "id": "m",
+      "role": "assistant",
+      "parts": []
+    },
+    "chunks": [
+      {
+        "type": "file",
+        "mediaType": "image/png",
+        "url": "data:image/png;base64,AA==",
+        "filename": "a.png"
+      },
+      {
+        "type": "source-url",
+        "sourceId": "s1",
+        "url": "https://example.com",
+        "title": "Example"
+      },
+      {
+        "type": "source-document",
+        "sourceId": "s2",
+        "mediaType": "application/pdf",
+        "title": "Doc",
+        "filename": "d.pdf"
+      }
+    ],
+    "expected": {
+      "id": "m",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "file",
+          "mediaType": "image/png",
+          "url": "data:image/png;base64,AA==",
+          "filename": "a.png"
+        },
+        {
+          "type": "source-url",
+          "sourceId": "s1",
+          "url": "https://example.com",
+          "title": "Example"
+        },
+        {
+          "type": "source-document",
+          "sourceId": "s2",
+          "mediaType": "application/pdf",
+          "title": "Doc",
+          "filename": "d.pdf"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a continuation extends a saved message",
+    "message": {
+      "id": "op:reply",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Let me check."
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c1",
+          "toolName": "delete",
+          "state": "approval-requested",
+          "input": {
+            "id": 3
+          },
+          "approval": {
+            "id": "c1"
+          }
+        }
+      ]
+    },
+    "chunks": [
+      {
+        "type": "tool-output-available",
+        "toolCallId": "c1",
+        "output": "deleted"
+      },
+      {
+        "type": "text-start",
+        "id": "1:0"
+      },
+      {
+        "type": "text-delta",
+        "id": "1:0",
+        "delta": "Done."
+      },
+      {
+        "type": "text-end",
+        "id": "1:0"
+      }
+    ],
+    "expected": {
+      "id": "op:reply",
+      "role": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Let me check."
+        },
+        {
+          "type": "tool",
+          "toolCallId": "c1",
+          "toolName": "delete",
+          "state": "output-available",
+          "input": {
+            "id": 3
+          },
+          "approval": {
+            "id": "c1"
+          },
+          "output": "deleted"
+        },
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ]
+    }
+  }
+]
