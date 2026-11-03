@@ -8,10 +8,15 @@ from typing import TYPE_CHECKING
 from .types import (
     HarnessEvent,
     HarnessInput,
+    MessageEvent,
     OperationEvent,
     OperationResult,
     PendingOperation,
     Receipt,
+    ResetEvent,
+    RunEndEvent,
+    RunStartEvent,
+    SessionInfo,
     SessionSnapshot,
     WhenBusy,
 )
@@ -47,17 +52,29 @@ class HarnessSession:
         input: HarnessInput,
         *,
         operation_id: str | None = None,
+        message_id: str | None = None,
+        participant: str | None = None,
         when_busy: WhenBusy = "queue",
     ) -> Receipt:
-        """Durably queue a prompt or tool answers; returns before the turn runs.
+        """Durably queue a user message or tool answers; returns before the turn runs.
 
         Parameters
         ----------
         input
-            A prompt, or answers to a ``needs_input`` result's requests.
+            A prompt, message parts, or answers to a ``needs_input`` result's
+            requests. Answers may arrive over several operations; the turn
+            continues once every request has one, and the first answer to a
+            request wins.
         operation_id
             Dedupes retries: submitting an existing id stores nothing new and
             returns a receipt with ``accepted=False``. Generated when omitted.
+        message_id
+            The id of the user message this places in the transcript; the
+            operation id when omitted.
+        participant
+            Who sent it. The client tool calls of a turn belong to the
+            participant who started it: a `ToolOutput` from anyone else
+            settles ``unanswered`` with reason ``"not-owner"``.
         when_busy
             ``"queue"`` behind open work, or ``"reject"`` it.
 
@@ -65,9 +82,18 @@ class HarnessSession:
         ------
         SessionBusyError
             If ``when_busy="reject"`` and the session has open work.
+        TypeError
+            If ``input`` mixes message parts and tool answers.
+        ValueError
+            If ``input`` is an empty sequence.
         """
         return await self._harness._submit(
-            self.id, input, operation_id=operation_id, when_busy=when_busy
+            self.id,
+            input,
+            operation_id=operation_id,
+            message_id=message_id,
+            participant=participant,
+            when_busy=when_busy,
         )
 
     async def wait(self, operation_id: str) -> OperationResult:
@@ -108,21 +134,28 @@ class HarnessSession:
         """
         await self._harness._retry(self.id, operation_id)
 
-    async def reset(self) -> None:
-        """Clear the session's history.
+    async def reset(self, handoff: str | None = None) -> None:
+        """Start the session over: clear its history and transcript.
+
+        Watchers get a `ResetEvent`. A ``handoff`` note becomes the new
+        transcript's first message (a system message), and
+        `Harness.reset_history` decides the new history.
 
         Raises
         ------
         SessionBusyError
             If the session has open work.
         """
-        await self._harness._reset(self.id)
+        await self._harness._reset(self.id, handoff)
 
     async def watch(self) -> AsyncIterator[HarnessEvent]:
-        """Yield a `SessionSnapshot` of open operations, then every event."""
-        queue = self._harness._subscribe(self.id)
+        """Yield a `SessionSnapshot`, then every event, in order.
+
+        Cancel the iterating task, or close the iterator, to stop watching.
+        """
+        queue, snapshot = await self._harness._watch(self.id)
         try:
-            yield SessionSnapshot(operations=await self.pending())
+            yield snapshot
             while True:
                 yield await queue.get()
         finally:
@@ -148,10 +181,7 @@ class HarnessSession:
 
             while True:
                 event = await queue.get()
-                if (
-                    isinstance(event, SessionSnapshot)
-                    or event.operation_id != operation_id
-                ):
+                if not _concerns(event, operation_id):
                     continue
 
                 yield event
@@ -177,7 +207,7 @@ class HarnessSessions:
         return await self._harness._create_session()
 
     async def fork(self, id: str) -> HarnessSession:
-        """Create a session with a copy of session ``id``'s history.
+        """Create a session with a copy of session ``id``'s history and transcript.
 
         Raises
         ------
@@ -186,6 +216,16 @@ class HarnessSessions:
         """
         return await self._harness._fork_session(id)
 
-    async def list(self) -> Sequence[str]:
-        """Return every session id, oldest first."""
-        return await self._harness._session_ids()
+    async def list(self) -> Sequence[SessionInfo]:
+        """Return every session, oldest first."""
+        return await self._harness._list_sessions()
+
+
+def _concerns(event: HarnessEvent, operation_id: str) -> bool:
+    match event:
+        case RunStartEvent(operations=operations) | RunEndEvent(operations=operations):
+            return operation_id in operations
+        case SessionSnapshot() | MessageEvent() | ResetEvent():
+            return False
+        case _:
+            return event.operation_id == operation_id

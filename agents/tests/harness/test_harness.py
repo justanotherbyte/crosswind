@@ -6,29 +6,62 @@ from fake_runtime import FakeCtx, Host
 
 from agents.harness import (
     Approval,
+    ChunkEvent,
+    FileInput,
     Harness,
+    MessageEvent,
     OperationEvent,
     OperationNotFoundError,
+    ResetEvent,
+    RunEndEvent,
+    RunSnapshot,
+    RunStartEvent,
     SessionBusyError,
+    SessionInfo,
     SessionNotFoundError,
     SessionSnapshot,
-    TextEvent,
+    TextInput,
+    ToolOutput,
     ToolRequest,
     Turn,
     TurnResult,
     tool,
+)
+from agents.harness.store import HarnessStore
+from agents.harness.transcript import (
+    FilePart,
+    TextDelta,
+    TextEnd,
+    TextPart,
+    TextStart,
+    ToolApproval,
+    ToolPart,
+    TranscriptMessage,
 )
 from agents.lifecycle import Lifecycle, MemoryLimitContext
 
 type Script = Callable[[Turn], Awaitable[TurnResult]]
 
 
+def chunks(turn: Turn, text: str) -> list[ChunkEvent]:
+    """The chunk events `echo` streams for `text`."""
+    return [
+        ChunkEvent(operation_id=turn.operation_id, chunk=chunk)
+        for chunk in (TextStart(id="0"), TextDelta(id="0", delta=text), TextEnd(id="0"))
+    ]
+
+
 async def echo(turn: Turn) -> TurnResult:
-    """Append the prompt to the history and answer with it."""
-    turn.emit(TextEvent(operation_id=turn.operation_id, text=str(turn.input)))
+    """Append the prompt to the history, stream it, and answer with it."""
+    for event in chunks(turn, str(turn.input)):
+        turn.emit(event)
 
     history = (turn.history or b"") + str(turn.input).encode() + b";"
-    return TurnResult(history=history, text=f"echo {turn.input}")
+    return TurnResult(
+        history=history,
+        reply=[TextPart(text=f"echo {turn.input}")],
+        text=f"echo {turn.input}",
+    )
 
 
 class ScriptedHarness(Harness):
@@ -73,7 +106,11 @@ class Blocker:
         self.release = asyncio.Event()
 
     async def __call__(self, turn: Turn) -> TurnResult:
-        turn.save(b"checkpoint:" + str(turn.input).encode())
+        turn.save(
+            b"checkpoint:" + str(turn.input).encode(),
+            reply=[TextPart(text="partial")],
+        )
+        turn.emit(ChunkEvent(operation_id=turn.operation_id, chunk=TextStart(id="0")))
         self.started.set()
         await self.release.wait()
         return await echo(turn)
@@ -368,7 +405,10 @@ def test_fork_copies_history_and_reset_clears_it() -> None:
         await harness.prompt("fresh")
         assert harness.turns[-1].history is None
 
-        assert await harness.sessions.list() == ["", fork.id]
+        assert await harness.sessions.list() == [
+            SessionInfo(id=""),
+            SessionInfo(id=fork.id, parent=""),
+        ]
         with pytest.raises(SessionNotFoundError):
             await harness.sessions.fork("missing")
 
@@ -380,16 +420,26 @@ def test_watch_yields_a_snapshot_then_events() -> None:
 
     async def scenario() -> None:
         events = harness.session().watch()
-        assert await anext(events) == SessionSnapshot(operations=[])
+        assert await anext(events) == SessionSnapshot(messages=[], pending=[])
 
-        await harness.session().prompt("hi", operation_id="op")
-        seen = [await anext(events) for _ in range(4)]
+        await harness.session().submit("hi", operation_id="op", participant="ann")
+        await harness.session().wait("op")
+        seen = [await anext(events) for _ in range(10)]
+        user = TranscriptMessage(id="op", role="user", parts=[TextPart(text="hi")])
+        reply = TranscriptMessage(
+            id="op:reply", role="assistant", parts=[TextPart(text="echo hi")]
+        )
         assert seen == [
             OperationEvent(operation_id="op", status="queued"),
+            MessageEvent(message=user),
             OperationEvent(operation_id="op", status="running"),
-            TextEvent(operation_id="op", text="hi"),
+            RunStartEvent(operations=("op",)),
+            *chunks(harness.turns[0], "hi"),
+            MessageEvent(message=reply),
+            RunEndEvent(operations=("op",)),
             OperationEvent(operation_id="op", status="done"),
         ]
+        assert harness.turns[0].participant == "ann"
         await events.aclose()
 
     asyncio.run(scenario())
@@ -406,7 +456,9 @@ def test_stream_yields_only_its_operation_and_ends_when_it_settles() -> None:
         assert seen == [
             OperationEvent(operation_id="op", status="queued"),
             OperationEvent(operation_id="op", status="running"),
-            TextEvent(operation_id="op", text="hi"),
+            RunStartEvent(operations=("op",)),
+            *chunks(harness.turns[1], "hi"),
+            RunEndEvent(operations=("op",)),
             OperationEvent(operation_id="op", status="done"),
         ]
 
@@ -515,3 +567,434 @@ def test_tool_rejects_sync_functions_and_bad_replay() -> None:
 
     with pytest.raises(ValueError, match="replay"):
         tool(replay="sometimes")
+
+
+# Transcript
+
+
+def transcript(harness: Harness, session: str = "") -> list[TranscriptMessage]:
+    return harness._store.messages(session)
+
+
+def test_a_turn_writes_one_user_and_one_assistant_message() -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit(
+            [TextInput(text="look"), FileInput(media_type="image/png", url="u")],
+            operation_id="op-1",
+            message_id="m-1",
+        )
+        await session.wait("op-1")
+        await session.prompt("again", operation_id="op-2")
+
+        assert transcript(harness) == [
+            TranscriptMessage(
+                id="m-1",
+                role="user",
+                parts=[TextPart(text="look"), FilePart(media_type="image/png", url="u")],
+            ),
+            TranscriptMessage(
+                id="op-1:reply",
+                role="assistant",
+                parts=[TextPart(text=f"echo {harness.turns[0].input}")],
+            ),
+            TranscriptMessage(id="op-2", role="user", parts=[TextPart(text="again")]),
+            TranscriptMessage(
+                id="op-2:reply", role="assistant", parts=[TextPart(text="echo again")]
+            ),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_queued_input_waits_for_the_running_turn_to_finish_its_messages() -> None:
+    blocker = Blocker()
+    _, harness, _ = setup(blocker)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit("a", operation_id="a")
+        await session.submit("b", operation_id="b")
+        await blocker.started.wait()
+        assert [message.id for message in transcript(harness)] == ["a", "a:reply"]
+
+        blocker.release.set()
+        await session.wait("b")
+        assert [message.id for message in transcript(harness)] == [
+            "a",
+            "a:reply",
+            "b",
+            "b:reply",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_input_must_be_a_prompt_parts_or_answers() -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        with pytest.raises(TypeError, match="mixes"):
+            await harness.session().submit(
+                [TextInput(text="hi"), Approval(id="x", approved=True)]
+            )
+        with pytest.raises(ValueError, match="at least one"):
+            await harness.session().submit([])
+
+    asyncio.run(scenario())
+
+
+def asks(*requests: ToolRequest) -> Script:
+    """A script that stops on ``requests`` after a prompt and echoes answers."""
+
+    async def script(turn: Turn) -> TurnResult:
+        if isinstance(turn.input, str):
+            return TurnResult(
+                history=b"asked",
+                reply=[
+                    TextPart(text="Let me check."),
+                    *(
+                        ToolPart(
+                            tool_call_id=request.id,
+                            tool_name=request.name,
+                            state="approval-requested"
+                            if request.kind == "approval"
+                            else "input-available",
+                            input=request.args,
+                            approval=ToolApproval(id=request.id)
+                            if request.kind == "approval"
+                            else None,
+                            owner=turn.participant if request.kind == "call" else None,
+                        )
+                        for request in requests
+                    ),
+                ],
+                status="needs_input",
+                requests=requests,
+            )
+
+        answered = ", ".join(answer.id for answer in turn.input)
+        return TurnResult(
+            history=b"answered",
+            reply=[TextPart(text=f"answered {answered}")],
+            text=f"answered {answered}",
+        )
+
+    return script
+
+
+DELETE = ToolRequest(id="call-1", name="delete", args={"id": 3}, kind="approval")
+LOCATE = ToolRequest(id="call-2", name="locate", args={}, kind="call")
+
+
+def test_a_continuation_extends_the_turns_assistant_message() -> None:
+    _, harness, _ = setup(asks(DELETE))
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.prompt("delete note 3", operation_id="ask")
+        events = session.watch()
+        await anext(events)
+
+        await session.prompt([Approval(id="call-1", approved=True)], operation_id="ok")
+        seen = [await anext(events) for _ in range(7)]
+        await events.aclose()
+
+        responded = TranscriptMessage(
+            id="ask:reply",
+            role="assistant",
+            parts=[
+                TextPart(text="Let me check."),
+                ToolPart(
+                    tool_call_id="call-1",
+                    tool_name="delete",
+                    state="approval-responded",
+                    input={"id": 3},
+                    approval=ToolApproval(id="call-1", approved=True),
+                ),
+            ],
+        )
+        final = TranscriptMessage(
+            id="ask:reply", role="assistant", parts=[TextPart(text="answered call-1")]
+        )
+        assert seen == [
+            OperationEvent(operation_id="ok", status="queued"),
+            MessageEvent(message=responded),
+            OperationEvent(operation_id="ok", status="running"),
+            RunStartEvent(operations=("ok",)),
+            MessageEvent(message=final),
+            RunEndEvent(operations=("ok",)),
+            OperationEvent(operation_id="ok", status="done"),
+        ]
+        assert [message.id for message in transcript(harness)] == ["ask", "ask:reply"]
+        assert harness.turns[1].input == [Approval(id="call-1", approved=True)]
+
+    asyncio.run(scenario())
+
+
+def test_partial_answers_wait_for_the_rest_and_the_first_answer_wins() -> None:
+    _, harness, _ = setup(asks(DELETE, LOCATE))
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.prompt("go")
+
+        first = await session.prompt([Approval(id="call-1", approved=False)])
+        again = await session.prompt([Approval(id="call-1", approved=True)])
+        assert (first.status, again.status) == ("done", "unanswered")
+        assert again.reason == "not-waiting"
+        assert len(harness.turns) == 1
+
+        last = await session.prompt([ToolOutput(id="call-2", value={"lat": 1})])
+        assert last.text == "answered call-1, call-2"
+        assert harness.turns[1].input == [
+            Approval(id="call-1", approved=False),
+            ToolOutput(id="call-2", value={"lat": 1}),
+        ]
+
+        late = await session.prompt([ToolOutput(id="call-2", value=None)])
+        assert (late.status, late.reason) == ("unanswered", "not-waiting")
+
+    asyncio.run(scenario())
+
+
+def test_a_client_tool_answer_from_anyone_but_its_owner_is_refused() -> None:
+    _, harness, _ = setup(asks(LOCATE))
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit("where am I?", operation_id="ask", participant="ann")
+        await session.wait("ask")
+        [_, reply] = transcript(harness)
+        assert isinstance(reply.parts[1], ToolPart)
+        assert reply.parts[1].owner == "ann"
+
+        await session.submit(
+            [ToolOutput(id="call-2", value="bob's")], operation_id="b", participant="bob"
+        )
+        refused = await session.wait("b")
+        assert (refused.status, refused.reason) == ("unanswered", "not-owner")
+
+        await session.submit(
+            [ToolOutput(id="call-2", value="ann's")], operation_id="a", participant="ann"
+        )
+        assert (await session.wait("a")).status == "done"
+        assert harness.turns[1].participant == "ann"
+
+    asyncio.run(scenario())
+
+
+def test_answers_after_a_new_message_are_not_wanted() -> None:
+    ask = asks(DELETE)
+
+    async def asks_once(turn: Turn) -> TurnResult:
+        return await (ask if turn.input == "delete note 3" else echo)(turn)
+
+    _, harness, _ = setup(asks_once)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.prompt("delete note 3")
+        await session.prompt("never mind")
+
+        late = await session.prompt([Approval(id="call-1", approved=True)])
+        assert (late.status, late.reason) == ("unanswered", "not-waiting")
+
+    asyncio.run(scenario())
+
+
+def test_a_partial_reply_survives_abort() -> None:
+    blocker = Blocker()
+    _, harness, _ = setup(blocker)
+
+    async def scenario() -> None:
+        session = harness.session()
+        events = session.watch()
+        await anext(events)
+        await session.submit("hi", operation_id="op")
+        await blocker.started.wait()
+        await session.abort("op")
+
+        seen = [await anext(events) for _ in range(8)]
+        await events.aclose()
+        partial = TranscriptMessage(
+            id="op:reply", role="assistant", parts=[TextPart(text="partial")]
+        )
+        assert seen[-3:] == [
+            MessageEvent(message=partial),
+            RunEndEvent(operations=("op",)),
+            OperationEvent(operation_id="op", status="aborted"),
+        ]
+        assert transcript(harness)[-1] == partial
+
+    asyncio.run(scenario())
+
+
+def test_a_partial_reply_survives_a_crash_past_max_restarts() -> None:
+    blocker = Blocker()
+    _, dead, host = setup(blocker, max_restarts=0)
+
+    async def scenario() -> None:
+        await dead.session().submit("hi", operation_id="op")
+        await blocker.started.wait()
+
+        lifecycle, harness, _ = setup(host=restarted(host), max_restarts=0)
+        await lifecycle.start()
+        await lifecycle.alarm()
+        result = await harness.session().wait("op")
+
+        assert (result.status, result.reason) == ("unanswered", "interrupted")
+        assert transcript(harness)[-1] == TranscriptMessage(
+            id="op:reply", role="assistant", parts=[TextPart(text="partial")]
+        )
+        await dead.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_resumed_turn_extends_what_the_crashed_attempt_saved() -> None:
+    blocker = Blocker()
+    _, dead, host = setup(blocker)
+
+    async def scenario() -> None:
+        await dead.session().submit("hi", operation_id="op")
+        await blocker.started.wait()
+
+        resumed = Blocker()
+        lifecycle, harness, _ = setup(resumed, host=restarted(host))
+        await lifecycle.start()
+        await lifecycle.alarm()
+        await resumed.started.wait()
+
+        snapshot = await anext(harness.session().watch())
+        assert isinstance(snapshot, SessionSnapshot)
+        assert [message.id for message in snapshot.messages] == ["op", "op:reply"]
+        assert snapshot.run == RunSnapshot(operations=("op",), partial=(TextStart(id="0"),))
+
+        resumed.release.set()
+        assert (await harness.session().wait("op")).status == "done"
+        await dead.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_snapshot_mid_run_leaves_the_reply_to_the_partial_chunks() -> None:
+    blocker = Blocker()
+    _, harness, _ = setup(blocker)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await session.submit("hi", operation_id="op")
+        await session.submit("next", operation_id="next")
+        await blocker.started.wait()
+
+        snapshot = await anext(session.watch())
+        assert snapshot == SessionSnapshot(
+            messages=[
+                TranscriptMessage(id="op", role="user", parts=[TextPart(text="hi")])
+            ],
+            pending=await session.pending(),
+            run=RunSnapshot(operations=("op",), partial=(TextStart(id="0"),)),
+        )
+        blocker.release.set()
+        await session.wait("next")
+
+    asyncio.run(scenario())
+
+
+def test_fork_copies_the_transcript_with_the_history() -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        await harness.prompt("hi")
+        fork = await harness.sessions.fork("")
+
+        assert transcript(harness, fork.id) == transcript(harness)
+        assert harness._store.history(fork.id) == b"hi;"
+
+    asyncio.run(scenario())
+
+
+class Seeding(ScriptedHarness):
+    def reset_history(self, handoff: str | None) -> bytes | None:
+        return None if handoff is None else f"seeded:{handoff}".encode()
+
+
+def test_reset_clears_history_and_transcript_and_carries_a_handoff() -> None:
+    harness = Seeding()
+    Lifecycle(Host()).use(harness)
+
+    async def scenario() -> None:
+        session = harness.session()
+        await harness.prompt("hi")
+        events = session.watch()
+        await anext(events)
+
+        await session.reset("Use metric units.")
+        reset, note = await anext(events), await anext(events)
+        await events.aclose()
+
+        assert reset == ResetEvent()
+        assert isinstance(note, MessageEvent)
+        assert note.message.role == "system"
+        assert note.message.parts == [TextPart(text="Use metric units.")]
+        assert transcript(harness) == [note.message]
+        assert harness._store.history("") == b"seeded:Use metric units."
+
+        await session.reset()
+        assert transcript(harness) == []
+        assert harness._store.history("") is None
+
+    asyncio.run(scenario())
+
+
+_put_message = HarnessStore.put_message
+
+
+def _fails_for_replies(
+    store: HarnessStore, session: str, message: TranscriptMessage, *rest: object
+) -> None:
+    if message.role == "assistant":
+        raise RuntimeError("disk full")
+    _put_message(store, session, message, *rest)
+
+
+def test_a_failed_save_writes_neither_checkpoint_nor_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def saves(turn: Turn) -> TurnResult:
+        turn.save(b"step-1", reply=[TextPart(text="partial")])
+        return await echo(turn)
+
+    _, harness, _ = setup(saves)
+
+    async def scenario() -> None:
+        monkeypatch.setattr(HarnessStore, "put_message", _fails_for_replies)
+        result = await harness.session().prompt("hi", operation_id="op")
+
+        assert (result.status, result.reason) == ("unanswered", "disk full")
+        assert harness._store.get("", "op").checkpoint is None
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_settlement_writes_neither_history_nor_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, harness, _ = setup()
+
+    async def scenario() -> None:
+        await harness.prompt("first")
+        monkeypatch.setattr(HarnessStore, "put_message", _fails_for_replies)
+        await harness.session().submit("second", operation_id="op")
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        assert harness._store.get("", "op").status == "running"
+        assert harness._store.history("") == b"first;"
+        assert [message.id for message in transcript(harness)][-1] == "op"
+        await harness.dispose()
+
+    asyncio.run(scenario())
