@@ -25,17 +25,58 @@ Each Crosswind SDK speaks the same wire protocols as it's official counter-part.
 - [x] No Pyodide or FFI faff. All APIs we expose expect standard Python types. If a conversion is needed, we handle it under the hood.
 - [x] Fully-typed. You don't need to run a command generating a 10,000 line stub file. Our stubs already exist.
 
+## How the packages fit together
+
+Every Python Worker imports the `workers` module, and exactly one runtime SDK
+provides it: `crosswind-workers` or Cloudflare's `workers-runtime-sdk`.
+Declare one of them in `pyproject.toml`, never both.
+
+`cf-agents`, `containers-py` and `crosswind-sandboxes` don't depend on
+`crosswind-workers`, and none of them depends on another. They list no runtime
+SDK at all. They import `workers` from whichever one your project declares.
+The `cf-agents` and `containers-py` test suites run against
+`workers-runtime-sdk`.
+
+`containers-py` and `crosswind-sandboxes` both act on the Durable Object's
+container, `ctx.container`. `containers-py` manages it from the outside:
+starting, stopping, sleeping, routing requests and filtering outbound traffic.
+`crosswind-sandboxes` works inside it: files, S3 mounts and directory backups.
+Sandboxes takes `ctx.container` directly, so it doesn't need a `Container`
+subclass.
+
+Using sandboxes inside a `Container` subclass isn't documented yet. A
+`Container` with outbound rules registers `interceptAllOutboundHttp()`
+before it starts the container, and S3 mounts and backups only work if their
+intercepts are registered before that catch-all. See
+[Mount an S3 bucket](sandboxes/s3-mounts.md) and
+[Use with a catch-all intercept](sandboxes/backups.md#use-with-a-catch-all-intercept).
+
+`wynd` builds, runs and deploys the Worker, whichever of these packages it
+uses. It works with either runtime SDK, but `wynd types` generates a typed
+`Env` only for `crosswind-workers`.
+
+```mermaid
+flowchart LR
+    wynd["wynd"] -- "builds and deploys" --> worker["Your Worker"]
+    worker --> agents["cf-agents"]
+    worker --> containers["containers-py"]
+    worker --> sandboxes["crosswind-sandboxes"]
+    agents & containers & sandboxes -- "import workers" --> runtime["crosswind-workers<br>or workers-runtime-sdk"]
+    containers & sandboxes -- "act on" --> ctr["ctx.container"]
+```
+
 ## Picking a Runtime SDK and a Build Tool
 
-Cloudflare ships [`pywrangler`]() and [`workers-runtime-sdk`](). They're both great!
+Cloudflare ships [pywrangler](https://github.com/cloudflare/workers-py) and
+[`workers-runtime-sdk`](https://github.com/cloudflare/workers-py). They're both great!
 
-Crosswind provides it's own opinionated build tool [`wynd`](), and it's own runtime SDK, [`crosswind-workers`](). They are not required, but they were built to make working with Python Workers that bit nicer:
+Crosswind provides its own opinionated build tool, [`wynd`](wynd/overview.md), and its own runtime SDK, [`crosswind-workers`](workers/overview.md). They are not required, but they were built to make working with Python Workers that bit nicer:
 
 - [x] Auto-magically generate typed `Env` stub. Workers using `crosswind-workers` can accept this as a generic!
 - [x] Keep Node.js build artifacts out of your Python codebase.
-- [x] Write your worker configurations with a typed [`cloudflare.config.py`]() instead of using JSONC or TOML.
+- [x] Write your worker configurations with a typed [`cloudflare.config.py`](wynd/python-config.md) instead of using JSONC or TOML.
 
-This is just a few things Crosswind gives you. You can choose to either `wynd` or `crosswind-workers`, both, or neither! All of Crosswind is still compatible with the official tools.
+This is just a few things Crosswind gives you. You can use `wynd`, `crosswind-workers`, both, or neither. The other Crosswind packages don't require either one.
 
 ## Limits
 
