@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from pydantic_ai import DeferredToolResults, ToolCallPart, ToolDenied
 
+from ..store import is_answers
 from ..types import Approval, HarnessInput, ToolAnswer, ToolOutput, ToolSpec
 
 __all__ = ("INTERRUPTED", "ToolAnswers")
@@ -22,14 +23,14 @@ class ToolAnswers:
     Parameters
     ----------
     input
-        The turn's input; a prompt carries no answers.
+        The turn's input; a user message carries no answers.
     """
 
     __slots__ = ("_answers",)
 
     def __init__(self, input: HarnessInput) -> None:
         self._answers: dict[str, ToolAnswer] = (
-            {} if isinstance(input, str) else {answer.id: answer for answer in input}
+            {answer.id: answer for answer in input} if is_answers(input) else {}
         )
 
     def for_first_run(self) -> DeferredToolResults | None:

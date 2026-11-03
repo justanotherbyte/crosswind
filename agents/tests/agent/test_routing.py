@@ -14,6 +14,7 @@ from agents import (
     callable,
     get_agent_by_name,
     route_agent_request,
+    route_sub_agent_request,
 )
 
 
@@ -200,3 +201,79 @@ def test_get_agent_by_name_starts_the_agent_and_passes_placement() -> None:
     assert agent.lifecycle.is_started()
     assert env.ChatRoom.get_options == [{"locationHint": "weur"}]
     assert run(stub.ping()) == "pong"
+
+
+class RecordingNamespace:
+    def __init__(self) -> None:
+        self.forwarded: list[Request] = []
+
+    def idFromName(self, name: str) -> str:  # noqa: N802
+        return name
+
+    def get(self, id: str, options: Any = None) -> "RecordingNamespace":
+        return self
+
+    async def fetch(self, request: Request) -> Response:
+        self.forwarded.append(request)
+        return Response("ok")
+
+
+class RecordingEnv:
+    def __init__(self) -> None:
+        self.ChatRoom = RecordingNamespace()
+
+
+@pytest.mark.parametrize("upgrade", [False, True])
+@pytest.mark.parametrize(
+    "header", ["x-channels-identity", "X-Channels-Identity", "X-CHANNELS-IDENTITY"]
+)
+def test_channels_identity_header_is_stripped(upgrade: bool, header: str) -> None:
+    env = RecordingEnv()
+    headers = {header: "spoofed", "Authorization": "Bearer t", "X-Custom": "kept"}
+    if upgrade:
+        headers["Upgrade"] = "websocket"
+    request = Request("https://x.dev/agents/chat-room/a", headers=headers)
+    assert run(route_agent_request(request, env)) is not None
+    [forwarded] = env.ChatRoom.forwarded
+    assert forwarded.headers.get("x-channels-identity") is None
+    assert forwarded.headers.get("Authorization") == "Bearer t"
+    assert forwarded.headers.get("X-Custom") == "kept"
+    assert (forwarded.headers.get("Upgrade") == "websocket") is upgrade
+    assert forwarded.url == request.url
+
+
+def test_channels_identity_header_is_stripped_after_before_hooks() -> None:
+    env = RecordingEnv()
+
+    async def keep_headers(request: Request, route: AgentRoute) -> Request:
+        return Request(request.url, headers=dict(request.headers.items()))
+
+    request = Request(
+        "https://x.dev/agents/chat-room/a",
+        headers={"Upgrade": "websocket", "X-Channels-Identity": "spoofed"},
+    )
+    run(route_agent_request(request, env, on_before_connect=keep_headers))
+    [forwarded] = env.ChatRoom.forwarded
+    assert forwarded.headers.get("x-channels-identity") is None
+    assert forwarded.headers.get("Upgrade") == "websocket"
+
+
+@pytest.mark.parametrize("from_path", [None, "/sub/chat/c1/hello"])
+@pytest.mark.parametrize("upgrade", [False, True])
+def test_sub_agent_forwarding_strips_channels_identity(
+    upgrade: bool, from_path: str | None
+) -> None:
+    parent = RecordingNamespace()
+    headers = {"X-Channels-Identity": "spoofed", "X-Custom": "kept"}
+    if upgrade:
+        headers["Upgrade"] = "websocket"
+    url = "https://x.dev/custom" if from_path else "https://x.dev/sub/chat/c1/hello"
+    response = run(
+        route_sub_agent_request(Request(url, headers=headers), parent, from_path=from_path)
+    )
+    assert response.status == 200
+    [forwarded] = parent.forwarded
+    assert forwarded.headers.get("x-channels-identity") is None
+    assert forwarded.headers.get("X-Custom") == "kept"
+    assert (forwarded.headers.get("Upgrade") == "websocket") is upgrade
+

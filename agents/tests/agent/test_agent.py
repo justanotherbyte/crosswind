@@ -16,6 +16,8 @@ from agents import (
     ObservabilityEvent,
     QueueItem,
     StateSource,
+    WebSockets,
+    WebSocketHandlers,
     callable,
     get_current_agent,
 )
@@ -271,6 +273,31 @@ def test_messages_rpc_and_context() -> None:
     assert ("message", "hello") in agent.log
     assert ws.frames()[-1]["result"] == "a"
     assert agent.get_callable_methods().keys() == {"increment", "whoami"}
+
+
+def test_websockets_is_the_installed_capability_and_shares_the_sockets() -> None:
+    agent = make()
+    assert isinstance(agent.websockets, WebSockets)
+    assert agent.websockets in agent.lifecycle._capabilities
+    claimed: list[str | bytes] = []
+
+    async def on_message(connection: Connection, message: str | bytes) -> bool:
+        if isinstance(message, str) and message.startswith("mine:"):
+            claimed.append(message)
+            return True
+        return False
+
+    agent.websockets.use(WebSocketHandlers(on_message=on_message))
+
+    async def scenario() -> None:
+        ws = await connect(agent)
+        await send(agent, ws, "mine:1")
+        await send(agent, ws, "theirs")
+
+    run(scenario())
+    assert claimed == ["mine:1"]
+    assert ("message", "mine:1") not in agent.log
+    assert ("message", "theirs") in agent.log
 
 
 def test_public_methods_run_as_the_current_agent() -> None:

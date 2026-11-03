@@ -3,6 +3,7 @@ import inspect
 import agents
 import agents.channels
 import agents.channels.web
+import agents.harness.transcript
 import agents.mcp
 from agents import (
     agent,
@@ -62,7 +63,13 @@ def test_all_is_a_tuple() -> None:
 
 
 def test_public_classes_and_functions_have_docstrings() -> None:
-    for package in (agents, agents.mcp, agents.channels, agents.channels.web):
+    for package in (
+        agents,
+        agents.mcp,
+        agents.harness.transcript,
+        agents.channels,
+        agents.channels.web,
+    ):
         for name in package.__all__:
             obj = getattr(package, name)
             if not (inspect.isclass(obj) or inspect.isfunction(obj)):

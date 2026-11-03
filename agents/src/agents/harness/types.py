@@ -1,28 +1,37 @@
 """Types for harnesses: inputs, turns, operation results, and events."""
 
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
 
 from ..core.types import JSONValue
+from .transcript import JSONObject, MessagePart, ResponseChunk, TranscriptMessage
 
 __all__ = (
     "Approval",
+    "ChunkEvent",
+    "FileInput",
     "HarnessEvent",
     "HarnessInput",
+    "InputPart",
+    "MessageEvent",
     "OperationEvent",
     "OperationResult",
     "OperationStatus",
     "PendingOperation",
     "Receipt",
     "Replay",
+    "ResetEvent",
+    "RunEndEvent",
+    "RunSnapshot",
+    "RunStartEvent",
+    "SaveCheckpoint",
+    "SessionInfo",
     "SessionSnapshot",
-    "TextEvent",
+    "TextInput",
     "ToolAnswer",
-    "ToolCallEvent",
     "ToolOutput",
     "ToolRequest",
-    "ToolResultEvent",
     "ToolSpec",
     "Turn",
     "TurnResult",
@@ -33,8 +42,8 @@ type OperationStatus = Literal[
     "queued", "running", "done", "needs_input", "unanswered", "aborted"
 ]
 """``queued`` and ``running`` are open; the rest are settled. ``needs_input``
-means the turn stopped on tool calls the client must answer with a new
-operation."""
+means the turn stopped on tool calls the client must answer with new
+operations."""
 
 type WhenBusy = Literal["queue", "reject"]
 """What ``submit`` does when the session has open work: queue behind it, or
@@ -74,8 +83,29 @@ class ToolOutput:
 type ToolAnswer = Approval | ToolOutput
 """An answer to one of a ``needs_input`` result's requests."""
 
-type HarnessInput = str | Sequence[ToolAnswer]
-"""What an operation carries: a user prompt, or answers to tool requests."""
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class TextInput:
+    """Text in a user message."""
+
+    text: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class FileInput:
+    """A file in a user message; ``url`` may be a ``data:`` URL."""
+
+    media_type: str
+    url: str
+    filename: str | None = None
+
+
+type InputPart = TextInput | FileInput
+"""One part of a user message."""
+
+type HarnessInput = str | Sequence[InputPart] | Sequence[ToolAnswer]
+"""What an operation carries: a user message (text, or parts), or answers to
+tool requests."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -122,10 +152,37 @@ class PendingOperation:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class SessionSnapshot:
-    """The first event ``watch`` yields: the session's open operations."""
+class SessionInfo:
+    """One session, as ``sessions.list()`` returns it."""
 
-    operations: Sequence[PendingOperation]
+    id: str
+    parent: str | None = None
+    """The session this one was forked from."""
+    busy: bool = False
+    """Whether the session has an operation queued or running."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class RunSnapshot:
+    """The run in progress when a watch started."""
+
+    operations: Sequence[str]
+    partial: Sequence[ResponseChunk] = ()
+    """The in-flight reply so far, as chunks; parts still streaming are left
+    open, and the watch's `ChunkEvent`s continue them."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class SessionSnapshot:
+    """The first event ``watch`` yields: the session's state.
+
+    ``messages`` is the transcript since the newest reset, without what the
+    run in progress has added: that is ``run.partial``.
+    """
+
+    messages: Sequence[TranscriptMessage]
+    pending: Sequence[PendingOperation]
+    run: RunSnapshot | None = None
     type: Literal["snapshot"] = "snapshot"
 
 
@@ -139,40 +196,68 @@ class OperationEvent:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class TextEvent:
-    """Model text streamed during a turn."""
+class RunStartEvent:
+    """A turn started running (again, after a crash) for these operations."""
 
-    operation_id: str
-    text: str
-    type: Literal["text"] = "text"
-
-
-@dataclass(slots=True, frozen=True, kw_only=True)
-class ToolCallEvent:
-    """A tool started running."""
-
-    operation_id: str
-    tool_call_id: str
-    name: str
-    args: dict[str, JSONValue]
-    type: Literal["tool-call"] = "tool-call"
+    operations: Sequence[str]
+    type: Literal["run-start"] = "run-start"
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
-class ToolResultEvent:
-    """A tool finished."""
+class RunEndEvent:
+    """The run for these operations ended; its reply has been saved."""
+
+    operations: Sequence[str]
+    type: Literal["run-end"] = "run-end"
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ChunkEvent:
+    """A streamed piece of the in-flight reply. Part ids are unique per run."""
 
     operation_id: str
-    tool_call_id: str
-    result: JSONValue
-    is_error: bool = False
-    type: Literal["tool-result"] = "tool-result"
+    chunk: ResponseChunk
+    type: Literal["chunk"] = "chunk"
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class MessageEvent:
+    """A message was saved to the transcript; it replaces any with its id."""
+
+    message: TranscriptMessage
+    type: Literal["message"] = "message"
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ResetEvent:
+    """The session was reset; messages that follow belong to the new context."""
+
+    type: Literal["reset"] = "reset"
 
 
 type HarnessEvent = (
-    SessionSnapshot | OperationEvent | TextEvent | ToolCallEvent | ToolResultEvent
+    SessionSnapshot
+    | OperationEvent
+    | RunStartEvent
+    | RunEndEvent
+    | ChunkEvent
+    | MessageEvent
+    | ResetEvent
 )
 """What ``watch`` yields."""
+
+
+class SaveCheckpoint(Protocol):
+    """``Turn.save``: durably replace the turn's checkpoint and reply."""
+
+    def __call__(
+        self,
+        checkpoint: bytes,
+        /,
+        *,
+        reply: Sequence[MessagePart] | None = None,
+        metadata: JSONObject | None = None,
+    ) -> None: ...
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -186,7 +271,8 @@ class Turn:
     operation_id
         The operation this turn answers.
     input
-        The operation's prompt or tool answers.
+        The operation's user message, or every answer to the requests the
+        turn continues from.
     history
         The session's history before this turn, as the subclass last returned
         it; ``None`` for a new session.
@@ -197,10 +283,13 @@ class Turn:
         0 on a first run, then how many times the turn was interrupted.
     tools
         The host's ``@tool`` methods, bound.
+    participant
+        Who started the turn: the client tool calls it makes are theirs.
     emit
-        Publishes an event to the session's watchers.
+        Streams a chunk of the reply to the session's watchers.
     save
-        Durably replaces the turn's checkpoint.
+        Durably replaces the turn's checkpoint and, with ``reply``, the
+        assistant message's parts so far, in one transaction.
     """
 
     session: str
@@ -210,15 +299,35 @@ class Turn:
     checkpoint: bytes | None
     attempt: int
     tools: Sequence[ToolSpec]
-    emit: Callable[[HarnessEvent], None]
-    save: Callable[[bytes], None]
+    participant: str | None
+    emit: Callable[[ChunkEvent], None]
+    save: SaveCheckpoint
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class TurnResult:
-    """What ``Harness.run_turn`` returns; ``history`` replaces the session's."""
+    """What ``Harness.run_turn`` returns.
+
+    ``history`` replaces the session's, and ``reply`` (with ``metadata``)
+    replaces the turn's assistant message, in one transaction.
+    """
 
     history: bytes
+    reply: Sequence[MessagePart] = ()
+    metadata: JSONObject | None = None
     status: Literal["done", "needs_input"] = "done"
     text: str | None = None
     requests: Sequence[ToolRequest] = ()
+
+
+@dataclass(slots=True, kw_only=True)
+class ActiveRun:
+    """The run in progress in one session, in memory only."""
+
+    operation_id: str
+    message_id: str
+    """The assistant message the run writes."""
+    before: TranscriptMessage | None
+    """That message as it was when the run started."""
+    partial: list[ResponseChunk] = field(default_factory=list)
+    wrote_reply: bool = False

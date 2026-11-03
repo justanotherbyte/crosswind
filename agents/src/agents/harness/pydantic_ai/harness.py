@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import (
@@ -11,15 +12,27 @@ from pydantic_ai import (
     CallToolsNode,
     DeferredToolRequests,
     FunctionToolset,
+    ModelMessage,
+    ModelRequest,
     ModelRequestNode,
+    SystemPromptPart,
     Tool,
 )
 
 from ..harness import Harness
-from ..types import ToolRequest, Turn, TurnResult
+from ..store import is_answers
+from ..transcript import MessagePart, ToolApproval, ToolPart
+from ..types import Approval, ChunkEvent, ToolOutput, ToolRequest, Turn, TurnResult
 from .answers import ToolAnswers
-from .events import to_harness_event
-from .utils import dump_messages, load_messages, pending_calls
+from .events import PartIds, to_chunks
+from .utils import (
+    dump_messages,
+    load_messages,
+    pending_calls,
+    reply_metadata,
+    to_reply,
+    user_prompt,
+)
 
 if TYPE_CHECKING:
     from ...core.types import Duration
@@ -35,7 +48,8 @@ class PydanticAIHarness(Harness):
     The agent keeps its model, instructions, and own tools. Each turn adds
     the target's ``@tool`` methods, passes the target as ``deps``, and asks
     for text. A turn that stops on tool calls needing approval or the
-    client settles ``needs_input``.
+    client settles ``needs_input``. The turn streams `ChunkEvent`s and saves
+    the assistant message's parts after every step.
 
     Parameters
     ----------
@@ -93,12 +107,13 @@ class PydanticAIHarness(Harness):
         messages = load_messages(turn.checkpoint or turn.history)
         answers = ToolAnswers(turn.input)
         if turn.checkpoint is None:
-            prompt = turn.input if isinstance(turn.input, str) else None
+            prompt = user_prompt(turn.input)
             results = answers.for_first_run()
         else:
             prompt = None
             results = answers.for_resume(pending_calls(messages), self._specs)
 
+        ids = PartIds()
         async with self.agent.iter(
             prompt,
             message_history=messages,
@@ -109,34 +124,57 @@ class PydanticAIHarness(Harness):
         ) as run:
             async for node in run:
                 if isinstance(node, ModelRequestNode | CallToolsNode):
-                    await self._step(turn, run, node)
+                    await self._step(turn, run, node, ids)
 
         assert run.result is not None
-        return _to_turn_result(run.result)
+        return _to_turn_result(turn, run.result)
+
+    def reset_history(self, handoff: str | None) -> bytes | None:
+        """Start the new history with the handoff note as a system prompt.
+
+        Pydantic AI adds an agent's ``system_prompt`` only to an empty
+        history, so after a reset with a handoff only its ``instructions``
+        (which apply to every request) still reach the model.
+        """
+        if not handoff:
+            return None
+
+        return dump_messages([ModelRequest(parts=[SystemPromptPart(content=handoff)])])
 
     async def _step(
         self,
         turn: Turn,
         run: AgentRun[Any, _Output],
         node: ModelRequestNode[Any, _Output] | CallToolsNode[Any, _Output],
+        ids: PartIds,
     ) -> None:
         checkpoint = run.all_messages()
         if isinstance(node, ModelRequestNode):
             checkpoint = [*checkpoint, node.request]
-        turn.save(dump_messages(checkpoint))
+            ids.next_node()
+        turn.save(
+            dump_messages(checkpoint),
+            reply=_reply(turn, checkpoint),
+            metadata=reply_metadata(checkpoint),
+        )
 
         async with node.stream(run.ctx) as events:
             async for event in events:
-                if (
-                    harness_event := to_harness_event(turn.operation_id, event)
-                ) is not None:
-                    turn.emit(harness_event)
+                for chunk in to_chunks(event, ids):
+                    turn.emit(ChunkEvent(operation_id=turn.operation_id, chunk=chunk))
 
 
-def _to_turn_result(result: AgentRunResult[_Output]) -> TurnResult:
-    history = dump_messages(result.all_messages())
+def _to_turn_result(turn: Turn, result: AgentRunResult[_Output]) -> TurnResult:
+    messages = result.all_messages()
+    history = dump_messages(messages)
+    metadata = reply_metadata(messages)
     if not isinstance(result.output, DeferredToolRequests):
-        return TurnResult(history=history, text=result.output)
+        return TurnResult(
+            history=history,
+            reply=_reply(turn, messages),
+            metadata=metadata,
+            text=result.output,
+        )
 
     requests = [
         ToolRequest(
@@ -151,4 +189,45 @@ def _to_turn_result(result: AgentRunResult[_Output]) -> TurnResult:
         )
         for call in calls
     ]
-    return TurnResult(history=history, status="needs_input", requests=requests)
+    return TurnResult(
+        history=history,
+        reply=_reply(turn, messages, requests),
+        metadata=metadata,
+        status="needs_input",
+        requests=requests,
+    )
+
+
+def _reply(
+    turn: Turn,
+    messages: Sequence[ModelMessage],
+    requests: Sequence[ToolRequest] = (),
+) -> list[MessagePart]:
+    """Map the turn's messages, then add what the history doesn't record.
+
+    That is the pending requests (an approval request, or the owner of a
+    client tool call: the participant who started the turn), and the
+    answers this turn continues from.
+    """
+    parts = to_reply(messages)
+    pending = {request.id: request.kind for request in requests}
+    answers = (
+        {answer.id: answer for answer in turn.input} if is_answers(turn.input) else {}
+    )
+
+    for part in parts:
+        if not isinstance(part, ToolPart):
+            continue
+
+        kind = pending.get(part.tool_call_id)
+        answer = answers.get(part.tool_call_id)
+        if kind == "approval" and part.state == "input-available":
+            part.state = "approval-requested"
+            part.approval = ToolApproval(id=part.tool_call_id)
+        elif kind == "call" or isinstance(answer, ToolOutput):
+            part.owner = turn.participant
+        elif isinstance(answer, Approval) and part.approval is None:
+            part.approval = ToolApproval(
+                id=part.tool_call_id, approved=answer.approved, reason=answer.message
+            )
+    return parts

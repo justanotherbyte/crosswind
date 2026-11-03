@@ -82,6 +82,7 @@ convention = "numpy"
 "src/agents/chat/{chunks,messages}.py" = ["RUF009"]
 "src/agents/mcp/models.py" = ["RUF009"]
 "src/agents/channels/{protocol.py,web/protocol.py}" = ["RUF009"]
+"src/agents/harness/transcript.py" = ["RUF009"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
