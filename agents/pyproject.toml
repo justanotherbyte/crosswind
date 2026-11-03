@@ -81,6 +81,7 @@ convention = "numpy"
 # wire() returns a dataclasses.field() (utilities.md §5), which RUF009 can't see.
 "src/agents/chat/{chunks,messages}.py" = ["RUF009"]
 "src/agents/mcp/models.py" = ["RUF009"]
+"src/agents/harness/transcript.py" = ["RUF009"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

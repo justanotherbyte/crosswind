@@ -2,7 +2,12 @@
 
 from ..core.errors import AgentsException
 
-__all__ = ("OperationNotFoundError", "SessionBusyError", "SessionNotFoundError")
+__all__ = (
+    "OperationNotFoundError",
+    "ResponseGrammarError",
+    "SessionBusyError",
+    "SessionNotFoundError",
+)
 
 
 class SessionBusyError(AgentsException):
@@ -30,3 +35,7 @@ class OperationNotFoundError(AgentsException):
         )
         self.session = session
         self.operation_id = operation_id
+
+
+class ResponseGrammarError(AgentsException):
+    """A response chunk breaks the chunk grammar (upstream ``response.ts``)."""
