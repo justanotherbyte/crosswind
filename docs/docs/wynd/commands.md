@@ -6,6 +6,8 @@ description: "Every Wynd command including init, the flags Wynd reads, [tool.wyn
 Run Wynd with `uvx wynd <command>`. To pin its version, run
 `uvx wynd@<version> <command>`. Wynd needs uv 0.13.4 or later and Node.js on
 `PATH`, and runs Wrangler 4.129.0 through `npx --yes wrangler@4.129.0`.
+[How Wynd builds a Worker](architecture.md) explains why the rules on this
+page exist.
 
 ## Commands
 
@@ -21,10 +23,10 @@ Run Wynd with `uvx wynd <command>`. To pin its version, run
 | Any other command              | Runs `wrangler <command> [args]` without syncing, with `--config` set to [Wynd's staged copy](#where-wynd-keeps-files) of your config. A `cloudflare.config.py` is [compiled first](python-config.md#check-the-compiled-config). If Wrangler edits the copy, such as `d1 create` adding a binding, Wynd warns you to copy the change into your own config, because it replaces the copy on its next run. |
 
 With `--dry-run`, the three upload commands print one line before Wrangler's
-output:
+output. For the project `wynd init` writes, measured with Wynd 0.3.0:
 
 ```text
-wynd: python_modules is 127,013 bytes, 92,668 after pruning (34,345 fewer). Each file's decision is in .wynd/shake.txt.
+wynd: python_modules is 130,629 bytes, 84,128 after pruning (46,501 fewer). Each file's decision is in .wynd/shake.txt.
 ```
 
 ### Exit codes
@@ -144,9 +146,10 @@ config next to `pyproject.toml`, that's `.wynd/run/`. It holds the staged
 config, `python_modules/`, copies of `.dev.vars*` and `.env*`, and Wrangler's
 `.wrangler/state/`.
 
-!!! warning
-    `.wrangler/state/` holds local D1, KV and R2 data, so deleting `.wynd/`
-    deletes that data too.
+> **Warning**
+>
+> `.wrangler/state/` holds local D1, KV and R2 data, so deleting `.wynd/`
+> deletes that data too.
 
 ## Environments
 

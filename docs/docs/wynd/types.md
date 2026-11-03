@@ -154,7 +154,7 @@ runtime.
 | `ratelimits`                                                  | `RateLimit`                             |
 | `version_metadata`                                            | `JsDict`                                |
 | Any other binding, such as `ai` or `browser`                  | `Binding`                               |
-| A text var, and each name in `.dev.vars`                      | `str`                                   |
+| A text var, each name in `secrets.required`, and each name in `.dev.vars` | `str`                     |
 | A JSON var                                                    | The type of its value, such as `int`, `list[str]` or `dict[str, int]` |
 
 Attribute names are the binding names exactly as written in the config. Wynd
@@ -210,7 +210,8 @@ The project uses the stock SDK. Switch to crosswind-workers with
 
 ### A secret is missing from `Env`
 
-Wynd reads secret names from `.dev.vars` next to the Wrangler config or
-`cloudflare.config.py`. Add the secret there with any local value, and run
-`uvx wynd types`. A `bindings.Secret()` in `cloudflare.config.py` doesn't add
-the name to `Env` by itself.
+Wynd types a secret from two places: the `secrets.required` list in the
+config, which a `bindings.Secret()` in `cloudflare.config.py` compiles to, and
+the names in `.dev.vars` next to the Wrangler config or
+`cloudflare.config.py`. Declare the secret in either place, and run
+`uvx wynd types`.

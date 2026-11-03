@@ -11,7 +11,7 @@ with it. You can use `wrangler.toml` or `wrangler.jsonc` instead.
 
 Keep your Wrangler file if you also run plain `wrangler` on the project, or if
 it uses a binding or setting that `wynd.config` doesn't model. The list is
-under [What it doesn't support](#what-it-doesnt-support).
+under [What it doesn't support](config-reference.md#what-it-doesnt-support).
 
 What the Python file adds:
 
@@ -58,8 +58,8 @@ add-ons.
 | ------------------------------------- | -------------------------------------------- |
 | `--sdk crosswind-workers` (default)   | `crosswind-workers`                          |
 | `--sdk workers-runtime-sdk`           | `workers-runtime-sdk`, with no `src/env.py` |
-| `--containers` / `--no-containers`    | `containers-py`                              |
-| `--agents` / `--no-agents`            | `cf-agents`                                  |
+| `--containers` / `--no-containers`    | `containers-py`, the [Containers](../containers/overview.md) SDK |
+| `--agents` / `--no-agents`            | `cf-agents`, the [Agents](../agents/overview.md) SDK |
 
 It writes:
 
@@ -211,48 +211,29 @@ Without `.dev.vars`, Wrangler warns
 `Missing required secrets: API_TOKEN.` and the Worker starts without it.
 For production, set the secret with `uvx wynd secret put API_TOKEN`.
 
-### Bindings
+### Bindings and their types
 
-Each class compiles to one Wrangler entry, with the dictionary key as the
-binding name:
+Each binding class compiles to one Wrangler entry, with the dictionary key as
+the binding name. The [reference](config-reference.md#bindings) lists every
+class, its arguments and its Wrangler entry.
 
-| Class                                        | Wrangler entry                       |
-| -------------------------------------------- | ------------------------------------ |
-| `Text(value)`                                | `vars`                               |
-| `Json(value)`                                | `vars`, with any JSON value          |
-| `Secret()`                                   | `secrets.required`                   |
-| `KV(id=None)`                                | `kv_namespaces`                      |
-| `D1(name=None, id=None)`                     | `d1_databases`, as `database_name` and `database_id` |
-| `R2(name=None, jurisdiction=None)`           | `r2_buckets`, as `bucket_name`. `jurisdiction` is `"eu"` or `"fedramp"` |
-| `Queue(name, delivery_delay=None)`           | `queues.producers`                   |
-| `DurableObject(export, worker=None)`         | `durable_objects.bindings`. Without `worker`, `export` must be a live Durable Object in this Worker's `exports` |
-| `Workflow(export, worker=None, name=None)`   | `workflows`. Without `worker`, `export` must be an `exports.Workflow`. With `worker`, `name` is required |
-| `Service(worker, export=None, props=None)`   | `services`. `export` names an entrypoint of the other Worker |
-| `AI()`                                       | `ai`, one per Worker                 |
-| `VersionMetadata()`                          | `version_metadata`, one per Worker   |
-| `Assets()`                                   | `assets.binding`, one per Worker. Needs `Worker.assets` |
+`wynd types` types a `Secret()` as `str` in `Env`, from the
+`secrets.required` list the class compiles to. You don't need a `.dev.vars`
+entry for the type. You need one only for a local value. See
+[Generate typed bindings](types.md).
 
-`wynd types` types a `Secret()` only when its name is in `.dev.vars`, as it
-does for a Wrangler config. See
-[Generate typed bindings](types.md#a-secret-is-missing-from-env).
+### Declare Durable Objects
 
-### Exports
-
-`exports` maps each class name in the entry module to its kind. Durable
-Object classes take one of five states:
-
-| Class                                          | Declares                                    |
-| ---------------------------------------------- | ------------------------------------------- |
-| `exports.DurableObject(storage="sqlite", container=None)` | A Durable Object class the Worker runs. `storage` is `"sqlite"` or `"legacy-kv"` |
-| `exports.DeletedDurableObject()`               | A class you removed, whose data Cloudflare deletes |
-| `exports.RenamedDurableObject(renamed_to=...)` | A class you renamed. `renamed_to` must be a live Durable Object in `exports` |
-| `exports.TransferredDurableObject(transferred_to=...)` | A class you moved to another Worker |
-| `exports.ExpectingTransferDurableObject(transfer_from=..., storage="sqlite", container=None)` | A class this Worker receives from another Worker |
-| `exports.Worker(cache=None)`                   | A `WorkerEntrypoint` class, with `cache` as `cache.enabled` |
-| `exports.Workflow(name, limits_steps=None)`    | A `WorkflowEntrypoint` class. It needs exactly one `bindings.Workflow` in `env` |
+`exports` maps each class name in the entry module to its kind.
+`exports.DurableObject()` declares a class the Worker runs. The other four
+Durable Object states record a class you deleted, renamed, transferred out or
+expect to receive, and `exports.Worker` and `exports.Workflow` declare
+`WorkerEntrypoint` and `WorkflowEntrypoint` classes. The
+[reference](config-reference.md#exports) lists each one.
 
 A `Container` goes on the Durable Object export that runs it, and needs
-`storage="sqlite"`:
+`storage="sqlite"`. The class itself comes from
+[Containers](../containers/overview.md):
 
 ```python
 from wynd.config import Container, exports
@@ -262,9 +243,7 @@ exports.DurableObject(container=image)
 ```
 
 `Container` takes exactly one of `dockerfile` and `image`, a prebuilt image
-reference. `build_context` and `build_vars` need `dockerfile`. Its other
-fields are `instance_type` and `max_instances`. Paths are relative to
-`cloudflare.config.py`.
+reference. Paths are relative to `cloudflare.config.py`.
 
 > **Warning**
 >
@@ -276,35 +255,15 @@ fields are `instance_type` and `max_instances`. Paths are relative to
 
 ### Triggers and other settings
 
-`triggers` takes `triggers.Cron(schedule)`,
-`triggers.Fetch(pattern, zone=None)` for a route, and
-`triggers.Queue(name, ...)` for a queue consumer, with
-`max_batch_size`, `max_batch_timeout`, `max_retries`, `max_concurrency`,
-`retry_delay` and `dead_letter_queue`.
+`triggers` takes `triggers.Cron`, `triggers.Fetch` for a route and
+`triggers.Queue` for a queue consumer. Declare every cron trigger in the
+config. Wynd always writes `triggers.crons`, as `[]` when the config has no
+`Cron`, so a deploy removes any cron trigger you added in the dashboard.
 
-Wynd always writes `triggers.crons`, as `[]` when the config has no `Cron`.
-Wrangler clears the deployed Worker's cron triggers when that list is empty,
-so a cron trigger you add in the dashboard goes away on the next deploy.
-Declare every cron trigger in the config.
-
-`Worker` also takes these fields, each compiled to the Wrangler key of the
-same name unless the table says otherwise:
-
-| Field                 | Type                                             |
-| --------------------- | ------------------------------------------------ |
-| `base_dir`            | `str`                                            |
-| `compatibility_flags` | `list[str]`, added after `python_workers`        |
-| `domains`             | `list[str]`, compiled to `routes` with `custom_domain: true` |
-| `assets`              | `Assets(directory, html_handling=None, not_found_handling=None, run_worker_first=None, base_path=None)` |
-| `observability`       | `Observability(enabled=None, head_sampling_rate=None, redact_query_string=None, logs=None, traces=None)` |
-| `placement`           | `Placement(mode, hint=None)`, with `mode` as `"off"` or `"smart"` |
-| `limits`              | `Limits(cpu_ms=None, subrequests=None)`          |
-| `logpush`, `workers_dev`, `preview_urls` | `bool`                        |
-| `tail_consumers`      | `list[TailConsumer(worker)]`, compiled to `tail_consumers[].service` |
-
-`Config` takes `worker`, plus `account_id` and `compliance_region`, which is
-`"public"` or `"fedramp-high"`. Import the settings classes from
-`wynd.config`.
+`Worker` also takes settings such as `domains`, `assets`, `observability`,
+`placement`, `limits` and `rules`, and `Config` takes `account_id` and
+`compliance_region`. Import the settings classes from `wynd.config`. The
+[reference](config-reference.md#worker) lists every field.
 
 ## Use modes
 
@@ -343,10 +302,11 @@ Wynd compiles `cloudflare.config.py` into a Wrangler file under `.wynd/run/`:
 For a config in a subdirectory of the project, the path includes that directory.
 
 Every Wynd command compiles it first, passthrough commands such as
-`wynd whoami` included, so every command runs your config's Python. Wynd
-rewrites the file only when its text changes, so a running `wynd dev`
-doesn't reload when nothing changed. The `.wynd/` line in the `.gitignore` that
-`wynd init` writes keeps these files out of Git.
+`wynd whoami` included, so every command runs your config's Python. `wynd dev`
+and passthrough commands write the compiled file. Wynd rewrites it only when
+its text changes, so a running `wynd dev` doesn't reload when nothing changed.
+The `.wynd/` line in the `.gitignore` that `wynd init` writes keeps these files
+out of Git.
 
 `.wynd/run/` stands in for the config's directory, as
 [Where Wynd keeps files](commands.md#where-wynd-keeps-files) describes, and Wynd
@@ -359,10 +319,11 @@ keeps serving the last good config. A reload doesn't reinstall packages or
 rewrite `env.py`, so restart `wynd dev` after you change the compatibility date,
 flags or bindings.
 
-To see what Wrangler gets, run any command and open the file:
+To see what Wrangler gets, run a passthrough command in the mode and open the
+file:
 
 ```sh
-uvx wynd types -e staging
+uvx wynd whoami -e staging
 cat .wynd/run/cloudflare.config.py.staging.json
 ```
 
@@ -453,44 +414,15 @@ Workers runtime.
 4. Run `uvx wynd deploy --dry-run` for each mode, and compare Wrangler's
    bindings list with the one your Wrangler file gave.
 
-Read the Durable Object warning under [Exports](#exports) before you deploy.
+Read the warning under [Declare Durable Objects](#declare-durable-objects)
+before you deploy.
 
 ## Errors
 
-Each error stops the command before Wrangler runs, and the command exits
-with `1`.
-
-| Cause | How to trigger it | Message |
-| --- | --- | --- |
-| A value fails a check inside one object | `compatibility_date="soon"` | `wynd: error: cloudflare.config.py:4: compatibility_date 'soon' isn't a YYYY-MM-DD date` |
-| A misspelled or missing argument | `Worker(nmae="hello", ...)` | `wynd: error: cloudflare.config.py:4: Worker.__init__() got an unexpected keyword argument 'nmae'` |
-| Rules that span objects fail | A binding to a class missing from `exports`, and a second `AI()` | `wynd: error: cloudflare.config.py has errors:` followed by one line per rule, such as `env['COUNTER']: exports has no live Durable Object named 'Counter'` and `env['AI2']: a Worker has one AI binding` |
-| No `config` | The file names its value `settings` | ``wynd: error: cloudflare.config.py must set `config` to a Config, or to a function that takes the mode and returns one`` |
-| A value JSON can't hold | `bindings.Json({"a", "b"})`, a set | `wynd: error: cloudflare.config.py holds a value JSON can't encode: Object of type set is not JSON serializable` |
-| A mode with other characters | `-e eu.west` | `wynd: error: mode 'eu.west' may hold only letters, digits, _ and -` |
-| Both config kinds in one directory | A `wrangler.jsonc` beside `cloudflare.config.py` | `wynd: error: <directory> has cloudflare.config.py and wrangler.jsonc. Keep one.` |
-
-The line number is the line in `cloudflare.config.py` where the failing call
-starts, here `worker=Worker(`. Wynd reports every rule that spans objects in
-one message, so you can fix them all at once.
-
-Any other exception in your config, such as a `NameError`, prints Python's
-traceback, which ends at the line in `cloudflare.config.py`.
-
-Errors Wynd finds after compiling, such as a bad source directory, name your
-config file, for example
-`main and base_dir must point into a subdirectory beside cloudflare.config.py`.
-Fix them in `cloudflare.config.py`. [Troubleshoot Wynd errors](troubleshooting.md)
-lists them.
-
-## What it doesn't support
-
-- Binding kinds other than those in [Bindings](#bindings), such as
-  Vectorize, Hyperdrive, Browser Rendering, rate limits and Analytics Engine.
-  Keep a Wrangler file for a Worker that needs one.
-- Wrangler's `migrations`, `env` sections, `unsafe` and per-binding `dev`
-  settings.
-- `.dev.vars.<mode>` files. Wrangler reads `.dev.vars` in every mode.
-- Importing one `cloudflare.config.py` from another, since the dotted file
-  name can't be imported.
-- Running without Wynd. Plain `wrangler` doesn't read `cloudflare.config.py`.
+Each error stops the command before Wrangler runs. A message with a line
+number, such as
+`wynd: error: cloudflare.config.py:4: compatibility_date 'soon' isn't a YYYY-MM-DD date`,
+comes from one object. A list under `cloudflare.config.py has errors:` comes
+from rules across objects, and Wynd reports all of them at once. The
+[reference](config-reference.md#errors) lists each message and the change that
+triggers it.

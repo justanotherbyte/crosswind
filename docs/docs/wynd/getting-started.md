@@ -81,7 +81,8 @@ uvx wynd deploy --dry-run
 
 Wynd prints the size of `python_modules/` before and after pruning, then
 Wrangler's dry-run output. For a Worker whose only dependency is
-`workers-runtime-sdk`, on a 2026-09-08 compatibility date:
+`workers-runtime-sdk`, on a 2026-09-08 compatibility date, measured with Wynd
+0.3.0:
 
 ```text
 wynd: python_modules is 113,809 bytes, 62,897 after pruning (50,912 fewer). Each file's decision is in .wynd/shake.txt.
@@ -121,6 +122,25 @@ replace `uv run pywrangler` with `uvx wynd` in scripts and CI:
 | `uv run pywrangler sync`         | `uvx wynd sync`            |
 | `uv run pywrangler types`        | `uvx wynd types`, crosswind-workers only |
 | `npx wrangler <command>`         | `uvx wynd <command>`       |
+
+## 8. Deploy from CI
+
+A CI job needs uv 0.13.4 or later and Node.js, as your machine does. Wrangler
+reads its credentials, such as `CLOUDFLARE_API_TOKEN`, from the environment,
+and Wynd passes the environment on to it. On a crosswind-workers project,
+check the committed `env.py` before deploying:
+
+```sh
+uvx wynd types --check
+uvx wynd deploy
+```
+
+On a fresh CI machine, `uvx wynd` runs the latest Wynd release, so a job can
+pick up a new one without a change to your project, and pruning rules can
+change between releases.
+`uvx wynd@<version>` runs a fixed release. Run `uvx wynd deploy --dry-run`
+with a new version before you change the one CI uses, and compare
+`.wynd/shake.txt`.
 
 ## Next steps
 

@@ -116,5 +116,7 @@ independent community project, not an official Cloudflare tool.
   Wynd.
 - [Write config in Python](python-config.md) creates a project with
   `wynd init` and configures it in `cloudflare.config.py`.
+- [How Wynd builds a Worker](architecture.md) explains what each command
+  does before Wrangler runs.
 - [Commands and configuration](commands.md) lists every command, flag and
   setting.

@@ -26,11 +26,11 @@ module it can't find.
 > Worker before you rely on it.
 >
 > It works best today for Workers whose dependencies are mostly pure Python
-> and ship tests, docs, type stubs or submodules you don't import. The
-> project `wynd init` writes uploads 36% fewer bytes. It saves less when
-> compiled extensions make up most of the bytes, because it keeps each
-> extension whole. A FastAPI Worker, where `pydantic_core` is most of the
-> upload, saves 16%.
+> and ship tests, docs, type stubs or submodules you don't import. Measured
+> with Wynd 0.3.0, the project `wynd init` writes uploads 36% fewer bytes. It
+> saves less when compiled extensions make up most of the bytes, because it
+> keeps each extension whole. A FastAPI Worker, where `pydantic_core` is most
+> of the upload, saves 16%.
 >
 > It doesn't do these:
 >
@@ -46,6 +46,8 @@ module it can't find.
 ```sh
 uvx wynd deploy --dry-run
 ```
+
+For the project `wynd init` writes, measured with Wynd 0.3.0:
 
 ```text
 wynd: python_modules is 130,629 bytes, 84,128 after pruning (46,501 fewer). Each file's decision is in .wynd/shake.txt.
@@ -195,8 +197,8 @@ Something imports the missing module by a computed name. Find it in
 
 Pruning removes whole files, comments and docstrings. It doesn't remove
 unused functions from a kept module, and it keeps compiled extensions whole.
-In a FastAPI Worker, `pydantic_core`'s extension is 4,689,616 of the
-7,872,724 bytes left after pruning, and Wynd saves 16%.
+In a FastAPI Worker measured with Wynd 0.3.0, `pydantic_core`'s extension is
+4,689,616 of the 7,872,724 bytes left after pruning, and Wynd saves 16%.
 
 ### `wynd: error: entry module main has no file in ...`
 
