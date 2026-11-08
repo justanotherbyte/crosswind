@@ -1,5 +1,5 @@
 ---
-title: "Connect a Python agent to MCP servers"
+title: "Connect an agent to MCP servers"
 description: "Connect a Python agent on Cloudflare to remote MCP servers: add a server, handle OAuth, list and call its tools, restore connections on wake, handle errors."
 ---
 

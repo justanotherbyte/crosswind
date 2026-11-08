@@ -1,5 +1,5 @@
 ---
-title: "Prune Cloudflare Python Worker uploads with Wynd"
+title: "Prune a Python Worker's upload with Wynd"
 description: "Reduce Cloudflare Python Worker uploads with Wynd: see which files pruning keeps, read .wynd/shake.txt and keep modules imported by names built at runtime."
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Use Cloudflare KV, D1, R2 and Queues from Python"
+title: "Use KV, D1, R2, Queues and service bindings from Python"
 description: "Read and write Cloudflare Workers bindings from Python with crosswind-workers: use typed KV, D1, R2, Queues and service bindings with async snake_case methods."
 ---
 

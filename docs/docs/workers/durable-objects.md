@@ -1,5 +1,5 @@
 ---
-title: "Build Cloudflare Durable Objects in Python"
+title: "Build a Durable Object in Python"
 description: "Build Cloudflare Durable Objects in Python with crosswind-workers: store data with typed storage or SQL, schedule alarms, accept WebSockets and call over RPC."
 ---
 

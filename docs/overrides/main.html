@@ -9,7 +9,8 @@
 {% block extrahead %}
   {% set title = (page.meta.title or page.title) if page else config.site_name %}
   {% set description = (page.meta.description or config.site_description) if page else config.site_description %}
-  {% set image = config.site_url ~ 'assets/logo.png' %}
+  {% set image = config.site_url ~ 'assets/og.png' %}
+  {% set video = config.site_url ~ 'assets/og.mp4' %}
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="{{ config.site_name | e }}">
   <meta property="og:title" content="{{ title | e }}{% if title != config.site_name %} - {{ config.site_name | e }}{% endif %}">
@@ -18,12 +19,19 @@
     <meta property="og:url" content="{{ page.canonical_url | e }}">
   {% endif %}
   <meta property="og:image" content="{{ image | e }}">
-  <meta property="og:image:alt" content="Crosswind logo">
-  <meta name="twitter:card" content="summary">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Crosswind: Python SDKs for Cloudflare">
+  <meta property="og:video" content="{{ video | e }}">
+  <meta property="og:video:secure_url" content="{{ video | e }}">
+  <meta property="og:video:type" content="video/mp4">
+  <meta property="og:video:width" content="1200">
+  <meta property="og:video:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ title | e }}{% if title != config.site_name %} - {{ config.site_name | e }}{% endif %}">
   <meta name="twitter:description" content="{{ description | e }}">
   <meta name="twitter:image" content="{{ image | e }}">
-  <meta name="twitter:image:alt" content="Crosswind logo">
+  <meta name="twitter:image:alt" content="Crosswind: Python SDKs for Cloudflare">
   <script type="application/ld+json">
     {{ {
       "@context": "https://schema.org",

@@ -1,5 +1,5 @@
 ---
-title: "Run a Pydantic AI agent in a Cloudflare Durable Object"
+title: "Run a Pydantic AI agent in a Durable Object"
 description: "Run a Pydantic AI agent in Python on Cloudflare: install the harness, give the model tools, approve tool calls, stream responses and resume after a crash."
 ---
 

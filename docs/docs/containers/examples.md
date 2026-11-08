@@ -1,5 +1,5 @@
 ---
-title: "Cloudflare Containers examples in Python"
+title: "Python Container examples: cron jobs, WebSockets, ports"
 description: "Cloudflare Containers examples in Python with containers-py: env vars and secrets, lifecycle monitoring, cron jobs, schedules, WebSockets and load balancing."
 ---
 

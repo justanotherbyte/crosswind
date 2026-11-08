@@ -1,5 +1,5 @@
 ---
-title: "Wynd CLI reference for Cloudflare Python Workers"
+title: "Wynd commands and configuration reference"
 description: "Find Wynd commands and configuration for Cloudflare Python Workers: init, dev, deploy, types, flags, Python targets, package installs and staged Wrangler files."
 ---
 

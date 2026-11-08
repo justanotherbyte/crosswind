@@ -1,5 +1,5 @@
 ---
-title: "Run FastAPI or Flask on Cloudflare Python Workers"
+title: "Serve a FastAPI or Flask app from a Python Worker"
 description: "Run FastAPI, Starlette or Flask on Cloudflare Python Workers with crosswind-workers ASGI and WSGI adapters, access bindings in routes and handle WebSockets."
 ---
 

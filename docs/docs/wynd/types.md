@@ -1,5 +1,5 @@
 ---
-title: "Generate Cloudflare Python Worker bindings with Wynd"
+title: "Generate typed bindings for a Python Worker with wynd types"
 description: "Generate typed bindings for Cloudflare Python Workers with wynd types: create an Env class, type Durable Object stubs and secrets, and check env.py in CI."
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Back up Cloudflare sandbox directories to R2 in Python"
+title: "Back up and restore a sandbox directory to R2"
 description: "Back up and restore Cloudflare sandbox directories from Python with DirectoryBackup and DirectoryBackupGateway, storing each backup as a tar+zstd object in R2."
 ---
 

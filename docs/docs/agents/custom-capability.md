@@ -1,5 +1,5 @@
 ---
-title: "Build a capability for your Python agents"
+title: "Build a capability for your agents"
 description: "Write a Python LifecycleCapability with its own table, durable jobs, retries and an HTTP route, then install it on an Agent or any Cloudflare Durable Object."
 ---
 

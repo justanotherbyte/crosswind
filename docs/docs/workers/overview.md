@@ -1,5 +1,5 @@
 ---
-title: "Python SDK for Cloudflare Workers"
+title: "crosswind-workers: a typed Python Workers SDK"
 description: "Use crosswind-workers, a typed Python SDK for Cloudflare Workers, with async APIs for bindings, requests, Durable Objects and Workflows, and deploy with Wynd."
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Start, stop and sleep Cloudflare Containers from Python"
+title: "Start, stop and put Python containers to sleep"
 description: "Control Cloudflare Containers from Python: start them before traffic arrives, run code on start and stop, set when idle containers sleep and stop them yourself."
 ---
 

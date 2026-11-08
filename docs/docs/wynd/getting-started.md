@@ -1,5 +1,5 @@
 ---
-title: "Switch Cloudflare Python Workers from pywrangler to Wynd"
+title: "Switch a Python Worker from pywrangler to Wynd"
 description: "Move a Cloudflare Python Worker from pywrangler to Wynd: declare the runtime SDK, run your project locally, check the pruned upload and deploy with Wrangler."
 ---
 

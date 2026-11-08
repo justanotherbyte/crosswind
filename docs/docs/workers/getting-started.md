@@ -1,5 +1,5 @@
 ---
-title: "Build a typed Python Worker on Cloudflare"
+title: "Build a typed Python Worker with crosswind-workers"
 description: "Build and deploy a Python Worker on Cloudflare with crosswind-workers, add a Durable Object counter, generate typed bindings with Wynd and test it locally."
 ---
 

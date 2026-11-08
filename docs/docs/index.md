@@ -1,6 +1,6 @@
 ---
 template: home.html
-title: "Python SDKs for Cloudflare Workers"
+title: Python SDKs for Cloudflare Workers
 description: "Build Python apps on Cloudflare with Crosswind SDKs for Workers, Durable Objects, Agents, Containers and Sandboxes, plus Wynd for local builds and deployment."
 hide:
   - navigation
