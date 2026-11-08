@@ -1,6 +1,6 @@
 ---
-title: "Generate typed bindings for a Python Worker with wynd types"
-description: "Generate an Env class from your Wrangler config with wynd types, type Durable Object stubs and secrets, and check env.py in CI."
+title: "Generate Cloudflare Python Worker bindings with Wynd"
+description: "Generate typed bindings for Cloudflare Python Workers with wynd types: create an Env class, type Durable Object stubs and secrets, and check env.py in CI."
 ---
 
 `wynd types` reads your Wrangler config and writes `env.py`, a Python class

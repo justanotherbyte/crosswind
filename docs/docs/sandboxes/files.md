@@ -1,6 +1,6 @@
 ---
-title: "Read and write files in a Cloudflare sandbox"
-description: "Use sandboxes.Files to read, write, stat, list, rename and remove files in a running container, and handle the errors Linux returns."
+title: "Read and write Cloudflare sandbox files in Python"
+description: "Read and write Cloudflare sandbox files from Python with sandboxes.Files: list, stat, rename and remove files in a container and handle filesystem errors."
 ---
 
 [`Files`](api.md#files) works on the filesystem of a running container. Create

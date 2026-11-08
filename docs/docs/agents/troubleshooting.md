@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot cf-agents errors and warnings"
-description: "Causes and fixes for cf-agents errors: unmatched agent URLs, uncallable methods, rejected state, chat stream errors, sub-agent exports and schedule warnings."
+description: "Fix cf-agents errors in Python agents on Cloudflare: unmatched agent URLs, uncallable methods, rejected state, chat stream errors, sub-agent exports, schedules."
 ---
 
 Each entry starts with the text you see in a response, a client error or the

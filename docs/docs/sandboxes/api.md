@@ -1,6 +1,6 @@
 ---
-title: "crosswind-sandboxes API reference"
-description: "Every class, method, type and error in crosswind-sandboxes: Files, S3Mount, S3Gateway, DirectoryBackup, DirectoryBackupGateway and the SandboxError hierarchy."
+title: "Cloudflare Sandbox Python SDK API reference"
+description: "Find the crosswind-sandboxes Python APIs for Cloudflare sandbox files, S3 mounts and R2 backups, including Files, gateways, backup records and error types."
 ---
 
 Use this reference to find the classes, methods and errors for sandbox file

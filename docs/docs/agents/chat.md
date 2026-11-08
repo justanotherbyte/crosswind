@@ -1,6 +1,6 @@
 ---
-title: "Build a streaming chat agent in Python"
-description: "Subclass AIChatAgent, stream replies from on_chat_message as text or typed chunks, connect useAgentChat, and control stored history and overlapping sends."
+title: "Build a streaming AI chat agent in Python on Cloudflare"
+description: "Build an AI chat agent in Python on Cloudflare: subclass AIChatAgent, stream replies as text or typed chunks, connect useAgentChat and control stored history."
 ---
 
 `AIChatAgent` is an agent that runs chat turns. When a user sends a message,

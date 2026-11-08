@@ -1,6 +1,6 @@
 ---
-title: "Write your own harness"
-description: "Subclass Harness to run your own agent loop or another framework in a Durable Object, with checkpoints, tools, approvals and crash recovery."
+title: "Write your own agent harness in Python"
+description: "Subclass Harness to run your own agent loop or another Python AI framework on a Cloudflare Durable Object with checkpoints, tools, approvals and crash recovery."
 ---
 
 Subclass [`Harness`][agents.Harness] to run a framework other than Pydantic AI, or your own loop. The base class stores sessions, operations and the transcript, queues prompts, publishes events and wakes the object after a crash. You implement one method, `run_turn`.

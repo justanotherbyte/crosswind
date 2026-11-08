@@ -1,6 +1,6 @@
 ---
-title: "crosswind-workers API reference"
-description: "Every public class, method and function in crosswind-workers: entrypoints, context, Request, Response, fetch, Blob, FormData, binding classes, RPC conversion, Workflows and the ASGI and WSGI adapters."
+title: "Cloudflare Workers Python SDK API reference"
+description: "Find crosswind-workers Python APIs for Cloudflare Workers: entrypoints, requests, responses, bindings, RPC, Durable Objects, Workflows, ASGI and WSGI adapters."
 ---
 
 Use this reference to find the runtime classes, methods and functions in

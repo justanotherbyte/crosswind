@@ -1,6 +1,6 @@
 ---
-title: "Python Container examples: cron jobs, WebSockets, ports"
-description: "Copy-paste containers-py patterns: env vars and secrets, lifecycle monitoring, cron jobs, schedules, WebSockets, load balancing and sandboxing."
+title: "Cloudflare Containers examples in Python"
+description: "Cloudflare Containers examples in Python with containers-py: env vars and secrets, lifecycle monitoring, cron jobs, schedules, WebSockets and load balancing."
 ---
 
 Each pattern assumes the Wrangler setup from

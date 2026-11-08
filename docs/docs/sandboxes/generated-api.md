@@ -1,6 +1,6 @@
 ---
-title: "sandboxes generated API reference"
-description: "Built from the numpy docstrings in the sandboxes source on every docs build."
+title: "Cloudflare Sandbox Python SDK generated API reference"
+description: "Browse the generated crosswind-sandboxes Python API reference for Cloudflare sandbox file operations, S3 mounts, backups and errors, built from source."
 ---
 
 ::: sandboxes

@@ -1,9 +1,9 @@
 ---
-title: "Serve a FastAPI or Flask app from a Python Worker"
-description: "Run an ASGI app such as FastAPI or a WSGI app such as Flask as a Python Worker with crosswind-workers' asgi and wsgi adapters, and read bindings from routes."
+title: "Run FastAPI or Flask on Cloudflare Python Workers"
+description: "Run FastAPI, Starlette or Flask on Cloudflare Python Workers with crosswind-workers ASGI and WSGI adapters, access bindings in routes and handle WebSockets."
 ---
 
-Serve an existing FastAPI or Flask app from a Python Worker with a
+Serve an existing FastAPI or Flask app from a Cloudflare Python Worker with a
 crosswind-workers adapter. `workers.asgi` serves ASGI apps such as FastAPI and
 Starlette. For a new app, use FastAPI with this adapter. It runs `async`
 routes, supports WebSockets and keeps background work alive through `ctx`.

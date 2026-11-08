@@ -1,6 +1,6 @@
 ---
-title: "wynd generated API reference"
-description: "Built from the numpy docstrings in the wynd.config source on every docs build."
+title: "Wynd Python configuration API for Cloudflare Workers"
+description: "Browse the generated wynd.config Python API reference for Cloudflare Workers, with typed config classes for bindings, Durable Objects, triggers and builds."
 ---
 
 ::: wynd.config

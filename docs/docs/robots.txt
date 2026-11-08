@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://crosswind.viswa.space/sitemap.xml

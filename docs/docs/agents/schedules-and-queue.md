@@ -1,6 +1,6 @@
 ---
 title: "Schedule and queue work in a Python agent"
-description: "Run an agent method later, on a cron expression or at a fixed interval, queue work to run in order after a request returns, and set retries."
+description: "Schedule work in a Python agent on Cloudflare: run a method later, on a cron or at an interval, queue work to run in order after a request, and set retries."
 ---
 
 An agent can run one of its own methods later. Schedules run at a time, after a

@@ -1,6 +1,6 @@
 ---
-title: "Use KV, D1, R2, Queues and service bindings from Python"
-description: "Read and write Workers bindings through crosswind-workers' typed classes, with Python values in and out, and fall back to JavaScript names when a method has no typed version."
+title: "Use Cloudflare KV, D1, R2 and Queues from Python"
+description: "Read and write Cloudflare Workers bindings from Python with crosswind-workers: use typed KV, D1, R2, Queues and service bindings with async snake_case methods."
 ---
 
 A binding in your Wrangler config becomes an attribute of `self.env`.

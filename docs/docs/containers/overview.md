@@ -1,11 +1,13 @@
 ---
-title: "Cloudflare Containers SDK for Python Workers"
-description: "What containers-py does, how a Container class maps to a Durable Object and a container instance, and when to use it from a Python Worker."
+title: "Crosswind Containers: Python SDK for Cloudflare Containers"
+description: "containers-py is a Python SDK for Cloudflare Containers: start and stop containers and route requests to them from a Python Worker through a Durable Object."
 ---
 
-Use `containers-py` to start Cloudflare Containers from a
-[Python Worker](https://developers.cloudflare.com/workers/languages/python/).
-It starts and stops containers and sends requests to them.
+`containers-py` is a Python SDK for
+[Cloudflare Containers](https://developers.cloudflare.com/containers/). It
+starts and stops containers from a
+[Python Worker](https://developers.cloudflare.com/workers/languages/python/)
+and sends requests to them.
 
 `containers-py` ports v0.3.7 of the
 [`@cloudflare/containers`](https://github.com/cloudflare/containers)

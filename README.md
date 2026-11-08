@@ -7,7 +7,7 @@
 
 [![Crosswind Community](https://discord.com/api/guilds/1564745929733443664/embed.png)](https://discord.gg/tbZTEeK35p)
 
-Crosswind provides Python packages for Cloudflare's [Python Workers](https://developers.cloudflare.com/workers/languages/python/). Each package ports a Cloudflare SDK that otherwise ships only for TypeScript. The Python APIs are typed and `async`.
+Crosswind provides Python SDKs for Cloudflare Workers, Durable Objects, Agents, Containers and Sandboxes. The packages run on [Python Workers](https://developers.cloudflare.com/workers/languages/python/) and provide typed, `async` APIs.
 
 Start with the [Crosswind documentation](https://crosswind.viswa.space) to choose a package.
 

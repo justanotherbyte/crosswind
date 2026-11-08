@@ -1,6 +1,6 @@
 ---
 title: "Lifecycle and capabilities API reference"
-description: "Reference for LifecycleCapability hooks and dispatch rules, LifecycleServices, the job queue, job outcomes, memory limits and the Lifecycle class."
+description: "Python API reference for LifecycleCapability on Cloudflare Durable Objects: hooks, dispatch rules, LifecycleServices, the job queue, job outcomes and Lifecycle."
 ---
 
 The full list of hooks, services and options for writing a capability. See [How an agent is built](architecture.md) for why these exist, and [Build a capability](custom-capability.md) for a guide. Every name here imports from `agents`.

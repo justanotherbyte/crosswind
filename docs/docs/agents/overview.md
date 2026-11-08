@@ -1,9 +1,9 @@
 ---
-title: "Cloudflare Agents for Python Workers"
-description: "What cf-agents does, how an Agent maps to a Durable Object, which parts of the TypeScript Agents SDK it ports, and what isn't ported yet."
+title: "Crosswind Agents: Python SDK for Cloudflare Agents"
+description: "cf-agents is a Python SDK for Cloudflare Agents: stateful AI agents on Durable Objects with WebSockets, schedules, MCP, streaming chat and Pydantic AI."
 ---
 
-Write stateful, durable Agents in Python, deployed on Cloudflare. Orchestrate WebSockets, run scheduled and background work and stream LLM model responses.
+`cf-agents` is a Python SDK for building AI agents on Cloudflare. Write stateful, durable agents in Python and deploy them on Cloudflare Workers. Orchestrate WebSockets, run scheduled and background work and stream LLM model responses.
 
 !!! note
     This is a port of the official [Agents SDK](https://agents.cloudflare.com). Crosswind ships a [Pydantic AI harness](pydantic-ai.md) and still aims to ship one similar to Project Think. If you'd like to help with this, please do contribute!

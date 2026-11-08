@@ -1,6 +1,6 @@
 ---
 title: "Handle WebSocket connections in a Python agent"
-description: "Run code when clients connect, message and disconnect, broadcast to every client, tag connections, store per-connection state and make connections readonly."
+description: "Handle WebSocket connections in a Python agent on Cloudflare: run code on connect, message and close, broadcast, tag connections and store per-connection state."
 ---
 
 Every client of an agent holds a WebSocket. The SDK accepts the socket, sends

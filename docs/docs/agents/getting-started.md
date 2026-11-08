@@ -1,6 +1,6 @@
 ---
 title: "Build your first Python agent on Cloudflare Workers"
-description: "Install cf-agents, write a counter agent with state and a callable method, route requests to it, call it from a JavaScript client and deploy it."
+description: "Build your first Python agent on Cloudflare Workers: install cf-agents, write a counter with state and a callable method, call it from JavaScript and deploy it."
 ---
 
 This guide builds a counter agent. Each counter has a name, keeps its count

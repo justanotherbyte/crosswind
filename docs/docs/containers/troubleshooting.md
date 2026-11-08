@@ -1,6 +1,6 @@
 ---
 title: "Troubleshoot containers-py errors and status codes"
-description: "Causes and fixes for containers-py errors: missing Wrangler config, 503 and 500 responses, ContainerProxy errors, blocked hosts and containers that never sleep."
+description: "Fix containers-py errors in Python Workers on Cloudflare: missing Wrangler config, 503 and 500 responses, ContainerProxy errors, blocked hosts, idle containers."
 ---
 
 Each entry starts with the text you see in a log or a response. Search this

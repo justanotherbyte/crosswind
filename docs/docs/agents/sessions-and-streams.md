@@ -1,6 +1,6 @@
 ---
 title: "Store conversations and durable streams in an agent"
-description: "Use the Streams capability to replay and follow a chunk log, and the Sessions capability to keep conversation history without AIChatAgent."
+description: "Use the Streams and Sessions capabilities in a Python agent on Cloudflare to replay and follow a chunk log and keep chat history without AIChatAgent."
 ---
 
 `AIChatAgent` is built on two capabilities that you can use by themselves: `Streams` and `Sessions`. Reach for them when you want part of what a chat agent does, but your own protocol or your own turn logic.

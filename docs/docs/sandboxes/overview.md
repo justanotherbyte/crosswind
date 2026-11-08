@@ -1,9 +1,10 @@
 ---
 title: "Cloudflare Sandbox SDK for Python Workers"
-description: "What a sandbox is, how crosswind-sandboxes reads and writes files, mounts S3 buckets and backs up directories in a container from a Python Worker."
+description: "Use crosswind-sandboxes, a Python SDK for Cloudflare Sandboxes, to read and write container files, mount S3 buckets and back up directories to R2 from a Worker."
 ---
 
-Use a sandbox to run code you don't trust, such as a script an LLM wrote, a
+`crosswind-sandboxes` is a Python SDK for Cloudflare Sandboxes. Use a sandbox
+to run code you don't trust, such as a script an LLM wrote, a
 user's build or a tool that needs a real shell. A sandbox is a Linux container
 that your Worker starts and controls. Its code runs in its own filesystem and
 process tree, apart from your Worker and other sandboxes.

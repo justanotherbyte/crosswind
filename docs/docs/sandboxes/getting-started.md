@@ -1,10 +1,11 @@
 ---
 title: "Create a Cloudflare sandbox from a Python Worker"
-description: "Install crosswind-sandboxes, add sandbox-shim to a container image, write a Durable Object that writes and reads files in the sandbox, then run and deploy it."
+description: "Create a Cloudflare sandbox from a Python Worker: install crosswind-sandboxes, add sandbox-shim to your image, read and write a file, then run and deploy it."
 ---
 
-This guide builds a Worker that starts a sandbox, writes a file in it and reads
-the file back. By the end, `curl` against your Worker prints the file.
+This guide builds a Python Worker that starts a Cloudflare sandbox, writes a
+file in it and reads the file back. By the end, `curl` against your Worker
+prints the file.
 
 ## Prerequisites
 

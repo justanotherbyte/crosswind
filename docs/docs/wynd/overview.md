@@ -1,10 +1,10 @@
 ---
-title: "Wynd: build and deploy Python Workers"
-description: "What Wynd does, how it differs from pywrangler, what its pruning saves, and when to use it."
+title: "Wynd: build and deploy Cloudflare Python Workers"
+description: "Build, run and deploy Cloudflare Python Workers with Wynd, a pywrangler replacement that reads typed Python config and prunes unused files before upload."
 ---
 
 Wynd builds, runs and deploys
-[Python Workers](https://developers.cloudflare.com/workers/languages/python/).
+[Cloudflare Python Workers](https://developers.cloudflare.com/workers/languages/python/).
 It replaces pywrangler and keeps your project layout: `pyproject.toml`, a
 Wrangler config and code in `src/`. Packages go in `.wynd/`. Run it with
 `uvx wynd`; it runs Wrangler 4.129.0 for you. Wynd can also read configuration

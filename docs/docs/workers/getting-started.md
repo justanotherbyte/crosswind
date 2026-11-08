@@ -1,9 +1,9 @@
 ---
-title: "Build a typed Python Worker with crosswind-workers"
-description: "Create a Python Worker with a Durable Object counter, generate its Env types with Wynd, run it locally and deploy it."
+title: "Build a typed Python Worker on Cloudflare"
+description: "Build and deploy a Python Worker on Cloudflare with crosswind-workers, add a Durable Object counter, generate typed bindings with Wynd and test it locally."
 ---
 
-This guide builds a Worker that counts its requests in a
+This guide builds a Python Worker on Cloudflare that counts its requests in a
 [Durable Object](https://developers.cloudflare.com/durable-objects/). By the
 end, `curl` returns `{"greeting": "hello", "count": 1}`, and the count goes up
 on every request.

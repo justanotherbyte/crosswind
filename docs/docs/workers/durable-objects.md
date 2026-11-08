@@ -1,10 +1,11 @@
 ---
-title: "Build a Durable Object in Python"
-description: "Define a Durable Object with crosswind-workers, store data with typed storage methods or SQL, schedule alarms, accept WebSockets and call it over RPC."
+title: "Build Cloudflare Durable Objects in Python"
+description: "Build Cloudflare Durable Objects in Python with crosswind-workers: store data with typed storage or SQL, schedule alarms, accept WebSockets and call over RPC."
 ---
 
-A [Durable Object](https://developers.cloudflare.com/durable-objects/) is a
-class with its own storage. Each name you look up maps to one instance, and
+A [Cloudflare Durable Object](https://developers.cloudflare.com/durable-objects/)
+is a class with its own storage. Use `crosswind-workers` to build one in Python.
+Each name you look up maps to one instance, and
 requests to that name reach the same instance. This page builds a chat room
 that stores messages, sends them to WebSocket clients and cleans up with an
 alarm.

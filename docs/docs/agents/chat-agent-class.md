@@ -1,6 +1,6 @@
 ---
 title: "AIChatAgent API reference for Python"
-description: "Reference for agents.AIChatAgent: options, hooks, transcript methods, turn control, message and part types, and the stream chunk classes."
+description: "Python API reference for agents.AIChatAgent on Cloudflare: options, hooks, transcript methods, turn control, message and part types, and stream chunks."
 ---
 
 `agents.AIChatAgent` extends [`Agent`](agent-class.md), so every hook and

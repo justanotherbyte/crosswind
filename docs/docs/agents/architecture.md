@@ -1,6 +1,6 @@
 ---
 title: "How an agent is built on Lifecycle and capabilities"
-description: "Why a Durable Object needs a Lifecycle, how capabilities share one fetch handler and one alarm, what Agent installs for you, and when to write your own."
+description: "How a Python Agent runs on a Cloudflare Durable Object: why it needs a Lifecycle, how capabilities share one fetch and one alarm, and what Agent installs."
 ---
 
 An `Agent` looks like one big class, but it's really a small class holding a list of features. Schedules, the queue, state, WebSockets, tasks and fibers are each a separate object called a capability, and `Agent` just installs them for you.

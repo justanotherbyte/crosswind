@@ -1,6 +1,6 @@
 ---
-title: "Configure a Python Worker in cloudflare.config.py"
-description: "Write a Worker's config as Python with wynd.config: create one with wynd init, declare bindings, Durable Objects and triggers, pick settings per mode, check the compiled Wrangler config and fix its errors."
+title: "Configure Cloudflare Python Workers with Wynd"
+description: "Configure Cloudflare Workers in Python with cloudflare.config.py and Wynd: declare typed bindings, Durable Objects and triggers, then check the Wrangler config."
 ---
 
 Write your Worker's config in `cloudflare.config.py` when you want typed

@@ -1,6 +1,6 @@
 ---
 title: "Migrate from @cloudflare/containers TypeScript to Python"
-description: "How the containers-py Python API maps to the @cloudflare/containers TypeScript package: naming, keyword arguments, types and behaviour differences."
+description: "Port @cloudflare/containers TypeScript code to Python with containers-py: how names, keyword arguments, types and behaviour map between the Cloudflare SDKs."
 ---
 
 `containers-py` ports

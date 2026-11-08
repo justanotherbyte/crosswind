@@ -1,6 +1,6 @@
 ---
 title: "Create sub-agents with their own storage in Python"
-description: "Create child agents from a parent agent, each with its own SQLite database, call their methods, route clients to them and delete them."
+description: "Create sub-agents from a Python agent on Cloudflare, each with its own SQLite database, then call their methods, route clients to them and delete them."
 ---
 
 A sub-agent is an agent that a parent agent creates and owns. Each sub-agent

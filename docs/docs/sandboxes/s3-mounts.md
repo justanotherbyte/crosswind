@@ -1,6 +1,6 @@
 ---
-title: "Mount an R2 or S3 bucket in a Cloudflare sandbox"
-description: "Use sandboxes.S3Mount and S3Gateway to mount an S3-compatible bucket at a path in a container, without giving the container any credentials."
+title: "Mount R2 or S3 in a Cloudflare sandbox with Python"
+description: "Mount an R2 or S3 bucket in a Cloudflare sandbox from Python with S3Mount and S3Gateway, so programs access objects as files without bucket credentials."
 ---
 
 [`S3Mount`](api.md#s3mount) mounts a bucket at a directory in the sandbox.
