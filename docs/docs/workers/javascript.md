@@ -1,6 +1,6 @@
 ---
-title: "Call JavaScript APIs from a crosswind-workers Worker"
-description: "Use js_object, JavaScript names, wrapper constructors, outbound fetch and import_from_javascript to reach runtime APIs that crosswind-workers doesn't wrap."
+title: "Call JavaScript APIs from Cloudflare Python Workers"
+description: "Call JavaScript APIs from Cloudflare Python Workers with crosswind-workers: use js_object, JavaScript names, wrapper constructors and import_from_javascript."
 ---
 
 crosswind-workers wraps the common runtime APIs in Python classes. For

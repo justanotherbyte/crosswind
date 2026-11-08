@@ -1,6 +1,6 @@
 ---
-title: "Wynd commands and configuration reference"
-description: "Every Wynd command including init, the flags Wynd reads, [tool.wynd] settings, Python target selection, when packages reinstall, the staged config and the files Wynd writes."
+title: "Wynd CLI reference for Cloudflare Python Workers"
+description: "Find Wynd commands and configuration for Cloudflare Python Workers: init, dev, deploy, types, flags, Python targets, package installs and staged Wrangler files."
 ---
 
 Run Wynd with `uvx wynd <command>`. To pin its version, run

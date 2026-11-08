@@ -1,6 +1,6 @@
 ---
 title: "Keep a Python agent running during long work"
-description: "Keep an agent in memory while slow work runs, checkpoint it with fibers, recover it after the isolate stops, and track managed fibers by id."
+description: "Keep a Python agent on Cloudflare in memory while slow work runs, checkpoint it with fibers, recover it after the isolate stops and track fibers by id."
 ---
 
 The runtime can evict an agent from memory when no request, message or alarm

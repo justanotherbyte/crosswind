@@ -1,6 +1,6 @@
 ---
-title: "Build a capability for your agents"
-description: "Write a LifecycleCapability with its own table, durable jobs, retries and an HTTP route, then install it on an Agent or a plain Durable Object."
+title: "Build a capability for your Python agents"
+description: "Write a Python LifecycleCapability with its own table, durable jobs, retries and an HTTP route, then install it on an Agent or any Cloudflare Durable Object."
 ---
 
 A capability is how you add a feature that owns its own tables, jobs or routes, and reuse it across agents. It's the same thing `Agent` uses for schedules, the queue and state.

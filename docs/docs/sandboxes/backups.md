@@ -1,6 +1,6 @@
 ---
-title: "Back up and restore a sandbox directory to R2"
-description: "Use sandboxes.DirectoryBackup and DirectoryBackupGateway to save a container directory to an R2 bucket as one tar+zstd object, restore it and delete it."
+title: "Back up Cloudflare sandbox directories to R2 in Python"
+description: "Back up and restore Cloudflare sandbox directories from Python with DirectoryBackup and DirectoryBackupGateway, storing each backup as a tar+zstd object in R2."
 ---
 
 A container's disk is gone once the container stops. To keep a directory, save

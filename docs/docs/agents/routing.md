@@ -1,6 +1,6 @@
 ---
 title: "Route requests to Python agents and call them over RPC"
-description: "Send HTTP and WebSocket requests to the right agent instance with route_agent_request, add auth and CORS, and call agent methods from Worker code."
+description: "Route HTTP and WebSocket requests to Python agents on Cloudflare with route_agent_request, add auth and CORS, and call agent methods over RPC from a Worker."
 ---
 
 Route requests to an agent by its name. Requests for the same name reach the

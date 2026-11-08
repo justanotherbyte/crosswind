@@ -1,6 +1,6 @@
 ---
-title: "Block, allow and intercept container outbound traffic"
-description: "Block internet access, allow or deny hosts, and route a container's outbound HTTP and HTTPS through Python handlers in your Worker."
+title: "Control Cloudflare Container outbound traffic from Python"
+description: "Block internet access for a Cloudflare Container, allow or deny hosts, and route its outbound HTTP and HTTPS requests through Python handlers in your Worker."
 ---
 
 By default a container can reach the public internet. You can block that,

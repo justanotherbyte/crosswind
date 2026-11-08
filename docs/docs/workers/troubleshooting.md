@@ -1,6 +1,6 @@
 ---
-title: "Troubleshoot crosswind-workers errors"
-description: "Causes and fixes for crosswind-workers errors: the stock SDK conflict, a missing env module, RPC argument errors, unknown binding methods, queue handler arguments, threads and JavaScript imports."
+title: "Troubleshoot Cloudflare Workers Python SDK errors"
+description: "Fix crosswind-workers errors in Cloudflare Python Workers: SDK conflicts, env types, RPC arguments, binding methods, queue handlers and JavaScript imports."
 ---
 
 Each heading is the text you see in `wynd dev` output or in a traceback.

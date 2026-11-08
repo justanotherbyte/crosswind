@@ -1,6 +1,6 @@
 ---
-title: "Migrate a Python Worker from workers-runtime-sdk to crosswind-workers"
-description: "Swap workers-runtime-sdk for crosswind-workers, add types one class at a time, and check the behaviour differences between the two SDKs."
+title: "Migrate to the typed Cloudflare Workers Python SDK"
+description: "Migrate a Cloudflare Python Worker from workers-runtime-sdk to crosswind-workers, add types one class at a time and check where the two SDKs behave differently."
 ---
 
 Your Worker's code doesn't change when you switch SDKs. crosswind-workers has

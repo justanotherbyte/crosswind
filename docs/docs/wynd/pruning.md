@@ -1,6 +1,6 @@
 ---
-title: "Prune a Python Worker's upload with Wynd"
-description: "How Wynd decides which vendored files a Python Worker uploads, how to read .wynd/shake.txt, and how to keep modules imported by computed names."
+title: "Prune Cloudflare Python Worker uploads with Wynd"
+description: "Reduce Cloudflare Python Worker uploads with Wynd: see which files pruning keeps, read .wynd/shake.txt and keep modules imported by names built at runtime."
 ---
 
 Use Wynd's pruning to leave unused package files out of your Worker's upload.

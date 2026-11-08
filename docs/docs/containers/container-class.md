@@ -1,6 +1,6 @@
 ---
 title: "Container class API reference for Python"
-description: "Full reference for containers.Container: properties, lifecycle hooks, request methods, start and stop, scheduling, outbound interception and helpers."
+description: "Python API reference for containers.Container on Cloudflare: properties, lifecycle hooks, request methods, start and stop, scheduling and outbound interception."
 ---
 
 Use this reference to configure and control a `containers.Container` subclass.

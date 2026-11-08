@@ -1,9 +1,9 @@
 ---
 title: "Write a Cloudflare Workflow in Python"
-description: "Define Workflow steps with crosswind-workers, pass results between steps, configure retries, stop retries with NonRetryableError, sleep, wait for events and start instances."
+description: "Write Cloudflare Workflows in Python with crosswind-workers: define durable steps, pass results, configure retries, sleep, wait for events and start instances."
 ---
 
-A [Workflow](https://developers.cloudflare.com/workflows/) runs a series of
+A [Cloudflare Workflow](https://developers.cloudflare.com/workflows/) runs a series of
 steps. The runtime saves each step's result, retries a step that raises, and
 can pause between steps for minutes or days. In crosswind-workers you write
 the whole Workflow in Python.

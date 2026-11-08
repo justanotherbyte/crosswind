@@ -1,6 +1,6 @@
 ---
-title: "Start, stop and put Python containers to sleep"
-description: "Start containers before traffic arrives, run code on start and stop with lifecycle hooks, control when idle containers sleep, and stop them yourself."
+title: "Start, stop and sleep Cloudflare Containers from Python"
+description: "Control Cloudflare Containers from Python: start them before traffic arrives, run code on start and stop, set when idle containers sleep and stop them yourself."
 ---
 
 A container starts on its first request, serves traffic, and stops once it

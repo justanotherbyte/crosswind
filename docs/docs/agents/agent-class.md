@@ -1,6 +1,6 @@
 ---
 title: "Agent class API reference for Python"
-description: "Reference for agents.Agent: class attributes, AgentOptions, hooks, state, connections, schedules, queue, fibers, routing functions, Connection and exceptions."
+description: "Python API reference for agents.Agent on Cloudflare Durable Objects: AgentOptions, hooks, state, connections, schedules, queue, fibers, routing and errors."
 ---
 
 Use this reference to choose the attributes, hooks and methods for an

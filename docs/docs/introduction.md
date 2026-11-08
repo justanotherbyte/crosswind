@@ -1,9 +1,9 @@
 ---
-title: "Introduction to Crosswind"
-description: "What Crosswind is, which package does what, how they fit together in one Python Worker, and which ones to install for your project."
+title: "Python SDKs for Cloudflare: meet Crosswind"
+description: "Learn how Crosswind brings Python SDKs to Cloudflare Workers, Agents, Containers and Sandboxes, how the packages fit together and which ones to install."
 ---
 
-Crosswind is a set of Python SDKs for
+Crosswind provides Python SDKs for Cloudflare, running on
 [Python Workers](https://developers.cloudflare.com/workers/languages/python/).
 
 Cloudflare currently ships great developer SDKs for TypeScript, not for Python, which is what Crosswind aims to solve. Each Crosswind package ports one of these SDKs, bringing familiar APIs to Python, while abstracting any Pyodide or FFI work from you.

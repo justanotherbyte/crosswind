@@ -1,6 +1,6 @@
 ---
 title: "agents generated API reference"
-description: "Built from the numpy docstrings in the agents source on every docs build."
+description: "Python API reference for cf-agents, the Cloudflare Agents SDK, built from the numpy docstrings in the agents package source on every docs build."
 ---
 
 ::: agents

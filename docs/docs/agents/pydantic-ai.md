@@ -1,6 +1,6 @@
 ---
-title: "Run a Pydantic AI agent in a Durable Object"
-description: "Install the Pydantic AI harness, see which parts Pydantic AI runs, give the model tools, approve tool calls, stream responses and resume after a crash."
+title: "Run a Pydantic AI agent in a Cloudflare Durable Object"
+description: "Run a Pydantic AI agent in Python on Cloudflare: install the harness, give the model tools, approve tool calls, stream responses and resume after a crash."
 ---
 
 `PydanticAIHarness` runs a [Pydantic AI](https://ai.pydantic.dev/) agent inside your Durable Object. It stores the conversation in SQLite, queues prompts and resumes a turn after a crash. [How a harness runs turns](harness.md) explains the operation statuses and the recovery steps.

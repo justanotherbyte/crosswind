@@ -1,6 +1,6 @@
 ---
 title: "Store and sync agent state in Python"
-description: "Type an agent's state, change it with set_state, validate changes from clients, react to changes, and store rows in the agent's SQLite database."
+description: "Store and sync state in a Python agent on Cloudflare: type it, change it with set_state, validate client changes, react to changes and store rows in SQLite."
 ---
 
 An agent has two places to keep data:

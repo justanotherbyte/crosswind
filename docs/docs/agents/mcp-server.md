@@ -1,6 +1,6 @@
 ---
-title: "Host an MCP server on a Python Worker"
-description: "Serve an MCP server from a Worker or an agent with create_mcp_handler, reach env from tools, add auth, and set CORS and host checks."
+title: "Host an MCP server in Python on Cloudflare Workers"
+description: "Run an MCP server in Python on Cloudflare Workers with create_mcp_handler and the official mcp SDK: read env in tools, add auth, and set CORS and host checks."
 ---
 
 `create_mcp_handler` serves an [MCP](https://modelcontextprotocol.io) server from your Worker. You write the server with the official `mcp` Python SDK, and we handle getting requests in and out of it on Workers.

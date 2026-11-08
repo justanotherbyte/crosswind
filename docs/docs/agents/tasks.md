@@ -1,6 +1,6 @@
 ---
 title: "Run durable multi-step tasks in a Python agent"
-description: "Define @task methods whose steps run once and survive restarts, with retries, timeouts, durable sleeps, idempotency keys and run inspection."
+description: "Run durable multi-step tasks in a Python agent on Cloudflare: @task steps run once and survive restarts, with retries, timeouts, sleeps and idempotency keys."
 ---
 
 A task is a method that runs in the background as a series of named steps. The

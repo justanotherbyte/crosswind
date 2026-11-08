@@ -1,6 +1,6 @@
 ---
 title: "Observe what a Python agent is doing"
-description: "Turn on the structured events an agent emits, send them to your own sink, subscribe to them in tests, and look up every event and its payload."
+description: "Observe a Python agent on Cloudflare: turn on the structured events it emits, send them to your own sink, subscribe to them in tests and look up each payload."
 ---
 
 Every agent emits structured events as it works: RPC calls, state changes, retries, failed jobs and more. They're off in your logs by default, because the default sink writes them at `DEBUG`.

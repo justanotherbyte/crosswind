@@ -1,6 +1,6 @@
 ---
-title: "Connect an agent to MCP servers"
-description: "Turn on the MCP client, add a server, handle OAuth, list and call its tools, restore connections after a wake, and handle MCP errors."
+title: "Connect a Python agent to MCP servers"
+description: "Connect a Python agent on Cloudflare to remote MCP servers: add a server, handle OAuth, list and call its tools, restore connections on wake, handle errors."
 ---
 
 Your agent can connect to any remote [MCP](https://modelcontextprotocol.io) server, then list and call its tools, prompts and resources. Connections are stored in the agent's SQLite database, so they come back when the agent wakes.

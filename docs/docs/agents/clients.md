@@ -1,6 +1,6 @@
 ---
 title: "Connect clients and call Python agent methods"
-description: "Connect to a Python agent from React or Node.js with the agents npm package, call @callable methods, and stream results back with async generators."
+description: "Connect React or Node.js clients to a Python agent on Cloudflare with the agents npm package, call @callable methods and stream results from async generators."
 ---
 
 Clients connect to an agent over a WebSocket with the

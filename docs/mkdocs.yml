@@ -1,5 +1,6 @@
 site_name: Crosswind
-site_url: https://mydomain.org/
+site_description: Python SDKs for Cloudflare Workers, Durable Objects, Agents, Containers and Sandboxes, with typed async APIs and the Wynd CLI to build and deploy Python apps.
+site_url: https://crosswind.viswa.space/
 repo_url: https://github.com/justanotherbyte/crosswind
 repo_name: justanotherbyte/crosswind
 theme:

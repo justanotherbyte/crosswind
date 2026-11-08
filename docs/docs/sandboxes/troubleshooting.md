@@ -1,6 +1,6 @@
 ---
-title: "Troubleshoot crosswind-sandboxes errors"
-description: "Causes and fixes for crosswind-sandboxes errors: shim protocol failures, a stopped container, S3 mount codes, credential provider failures and backup errors."
+title: "Troubleshoot Cloudflare sandbox Python SDK errors"
+description: "Fix crosswind-sandboxes errors in Python on Cloudflare: inspect error codes for shim failures, stopped containers, S3 mounts, credentials and directory backups."
 ---
 
 Start with the exception. `SandboxFileError`, `SandboxS3MountError` and `SandboxBackupError` have a `code`, which is what the entries below are named after, and a `detail` with the reason. See [Errors](api.md#errors) for the full list.

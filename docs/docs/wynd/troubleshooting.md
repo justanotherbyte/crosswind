@@ -1,6 +1,6 @@
 ---
-title: "Troubleshoot Wynd errors"
-description: "Causes and fixes for Wynd errors: missing config or SDK, cloudflare.config.py errors, missing uv, Python target errors, uv install failures, staging and path errors, and refused Wrangler flags."
+title: "Troubleshoot Wynd for Cloudflare Python Workers"
+description: "Fix Wynd errors in Cloudflare Python Workers: missing config or SDK, Python config errors, uv failures, target versions, staging paths and Wrangler flags."
 ---
 
 Wynd's own errors start with `wynd: error:` and stop the command before

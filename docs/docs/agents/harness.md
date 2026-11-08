@@ -1,6 +1,6 @@
 ---
-title: "How a harness runs turns and survives a crash"
-description: "What a harness is, how an operation moves from queued to settled, how it keeps a transcript, what it stores in SQLite, how it resumes after a crash, and what repeats."
+title: "How an agent harness runs turns and survives a crash"
+description: "How a Python agent harness runs AI agent turns in a Cloudflare Durable Object: operation statuses, transcripts, SQLite storage, crash recovery and what repeats."
 ---
 
 A [`Harness`][agents.Harness] runs an agent loop inside a Durable Object. You submit a prompt, the harness stores it in SQLite as an operation, and it runs operations one at a time per session. It keeps each session's transcript, the messages people see, and streams each reply as it's written. If the isolate dies mid-turn, the harness resumes the turn from its last checkpoint.

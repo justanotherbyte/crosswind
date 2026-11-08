@@ -1,6 +1,6 @@
 ---
 title: "Harness class API reference"
-description: "Reference for agents.Harness and its sessions: submitting prompts, waiting, streaming and watching events, aborting, retrying, forking, resetting, the transcript, and every result and event type."
+description: "Python API reference for agents.Harness on Cloudflare: sessions, prompts, waiting, streaming events, abort, retry, fork, reset, transcripts and result types."
 ---
 
 The full list of what a harness and its sessions can do. See [How a harness works](harness.md) for what these statuses mean, [Run a Pydantic AI agent](pydantic-ai.md) for a guide, and [Write your own harness](custom-harness.md) to implement `run_turn`. Every name here imports from `agents`, except the transcript records, which import from `agents.harness.transcript`.

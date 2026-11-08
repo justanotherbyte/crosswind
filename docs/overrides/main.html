@@ -7,6 +7,35 @@
 {% endblock %}
 
 {% block extrahead %}
+  {% set title = (page.meta.title or page.title) if page else config.site_name %}
+  {% set description = (page.meta.description or config.site_description) if page else config.site_description %}
+  {% set image = config.site_url ~ 'assets/logo.png' %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name | e }}">
+  <meta property="og:title" content="{{ title | e }}{% if title != config.site_name %} - {{ config.site_name | e }}{% endif %}">
+  <meta property="og:description" content="{{ description | e }}">
+  {% if page and page.canonical_url %}
+    <meta property="og:url" content="{{ page.canonical_url | e }}">
+  {% endif %}
+  <meta property="og:image" content="{{ image | e }}">
+  <meta property="og:image:alt" content="Crosswind logo">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ title | e }}{% if title != config.site_name %} - {{ config.site_name | e }}{% endif %}">
+  <meta name="twitter:description" content="{{ description | e }}">
+  <meta name="twitter:image" content="{{ image | e }}">
+  <meta name="twitter:image:alt" content="Crosswind logo">
+  <script type="application/ld+json">
+    {{ {
+      "@context": "https://schema.org",
+      "@type": "SoftwareSourceCode",
+      "name": config.site_name,
+      "description": config.site_description,
+      "url": config.site_url,
+      "codeRepository": config.repo_url,
+      "programmingLanguage": "Python",
+      "runtimePlatform": "Cloudflare Workers"
+    } | tojson }}
+  </script>
   <script
     src="https://cdn.databuddy.cc/databuddy.js"
     data-client-id="4017b741-699e-43e8-bc65-0948ad13e2af"

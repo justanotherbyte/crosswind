@@ -1,6 +1,7 @@
 ---
 template: home.html
-title: Python SDKs for Cloudflare Workers
+title: "Python SDKs for Cloudflare Workers"
+description: "Build Python apps on Cloudflare with Crosswind SDKs for Workers, Durable Objects, Agents, Containers and Sandboxes, plus Wynd for local builds and deployment."
 hide:
   - navigation
   - toc
@@ -173,6 +174,9 @@ uvx wynd tail     # anything else goes to Wrangler unchanged
 <section class="cw-section" markdown>
 
 ## What Crosswind is
+
+Crosswind provides Python SDKs for Cloudflare Workers, Durable Objects, Agents,
+Containers and Sandboxes.
 
 [Python Workers](https://developers.cloudflare.com/workers/languages/python/)
 run Python on Cloudflare's network. Several Cloudflare products ship their

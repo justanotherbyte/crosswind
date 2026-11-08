@@ -1,6 +1,6 @@
 ---
 title: "Run Cloudflare Containers from Python Workers"
-description: "Install containers-py, write a FastAPI container, define a Container class, configure Wrangler, run it locally and deploy it from a Python Worker."
+description: "Run Cloudflare Containers from a Python Worker: install containers-py, write a FastAPI container, define a Container class, configure Wrangler and deploy."
 ---
 
 This guide puts a small [FastAPI](https://fastapi.tiangolo.com/) app in a
