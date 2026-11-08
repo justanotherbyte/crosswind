@@ -1,5 +1,5 @@
 ---
-title: "Configure Cloudflare Python Workers with Wynd"
+title: "Configure a Python Worker in cloudflare.config.py"
 description: "Configure Cloudflare Workers in Python with cloudflare.config.py and Wynd: declare typed bindings, Durable Objects and triggers, then check the Wrangler config."
 ---
 

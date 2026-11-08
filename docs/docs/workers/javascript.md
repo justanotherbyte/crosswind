@@ -1,5 +1,5 @@
 ---
-title: "Call JavaScript APIs from Cloudflare Python Workers"
+title: "Call JavaScript APIs from a crosswind-workers Worker"
 description: "Call JavaScript APIs from Cloudflare Python Workers with crosswind-workers: use js_object, JavaScript names, wrapper constructors and import_from_javascript."
 ---
 

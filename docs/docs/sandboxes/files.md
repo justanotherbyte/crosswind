@@ -1,5 +1,5 @@
 ---
-title: "Read and write Cloudflare sandbox files in Python"
+title: "Read and write files in a Cloudflare sandbox"
 description: "Read and write Cloudflare sandbox files from Python with sandboxes.Files: list, stat, rename and remove files in a container and handle filesystem errors."
 ---
 

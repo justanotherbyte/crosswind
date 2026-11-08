@@ -1,5 +1,5 @@
 ---
-title: "Build a streaming AI chat agent in Python on Cloudflare"
+title: "Build a streaming chat agent in Python"
 description: "Build an AI chat agent in Python on Cloudflare: subclass AIChatAgent, stream replies as text or typed chunks, connect useAgentChat and control stored history."
 ---
 

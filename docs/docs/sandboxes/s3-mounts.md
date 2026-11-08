@@ -1,5 +1,5 @@
 ---
-title: "Mount R2 or S3 in a Cloudflare sandbox with Python"
+title: "Mount an R2 or S3 bucket in a Cloudflare sandbox"
 description: "Mount an R2 or S3 bucket in a Cloudflare sandbox from Python with S3Mount and S3Gateway, so programs access objects as files without bucket credentials."
 ---
 

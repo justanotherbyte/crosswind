@@ -1,5 +1,5 @@
 ---
-title: "Troubleshoot Cloudflare Workers Python SDK errors"
+title: "Troubleshoot crosswind-workers errors"
 description: "Fix crosswind-workers errors in Cloudflare Python Workers: SDK conflicts, env types, RPC arguments, binding methods, queue handlers and JavaScript imports."
 ---
 

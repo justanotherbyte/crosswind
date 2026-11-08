@@ -1,5 +1,5 @@
 ---
-title: "Cloudflare Sandbox Python SDK API reference"
+title: "crosswind-sandboxes API reference"
 description: "Find the crosswind-sandboxes Python APIs for Cloudflare sandbox files, S3 mounts and R2 backups, including Files, gateways, backup records and error types."
 ---
 

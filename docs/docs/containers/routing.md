@@ -1,5 +1,5 @@
 ---
-title: "Route requests to Cloudflare Containers from Python"
+title: "Route requests to containers and scale instances"
 description: "Pick which Cloudflare Container instance serves a request from a Python Worker with get_container and get_random, switch ports and call container methods."
 ---
 

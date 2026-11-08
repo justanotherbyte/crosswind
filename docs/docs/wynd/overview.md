@@ -1,5 +1,5 @@
 ---
-title: "Wynd: build and deploy Cloudflare Python Workers"
+title: "Wynd: build and deploy Python Workers"
 description: "Build, run and deploy Cloudflare Python Workers with Wynd, a pywrangler replacement that reads typed Python config and prunes unused files before upload."
 ---
 

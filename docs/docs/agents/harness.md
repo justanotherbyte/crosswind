@@ -1,5 +1,5 @@
 ---
-title: "How an agent harness runs turns and survives a crash"
+title: "How a harness runs turns and survives a crash"
 description: "How a Python agent harness runs AI agent turns in a Cloudflare Durable Object: operation statuses, transcripts, SQLite storage, crash recovery and what repeats."
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Migrate from the TypeScript Cloudflare Agents SDK to Python"
+title: "Migrate from the TypeScript Agents SDK to Python"
 description: "Port a Cloudflare Agents SDK project from TypeScript to Python with cf-agents: method names, decorators, options, SQL, schedules, chat replies and gaps."
 ---
 

@@ -1,5 +1,5 @@
 ---
-title: "Troubleshoot Wynd for Cloudflare Python Workers"
+title: "Troubleshoot Wynd errors"
 description: "Fix Wynd errors in Cloudflare Python Workers: missing config or SDK, Python config errors, uv failures, target versions, staging paths and Wrangler flags."
 ---
 

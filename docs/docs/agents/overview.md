@@ -1,5 +1,5 @@
 ---
-title: "Crosswind Agents: Python SDK for Cloudflare Agents"
+title: "Cloudflare Agents for Python Workers"
 description: "cf-agents is a Python SDK for Cloudflare Agents: stateful AI agents on Durable Objects with WebSockets, schedules, MCP, streaming chat and Pydantic AI."
 ---
 

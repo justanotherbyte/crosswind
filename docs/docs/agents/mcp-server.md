@@ -1,5 +1,5 @@
 ---
-title: "Host an MCP server in Python on Cloudflare Workers"
+title: "Host an MCP server on a Python Worker"
 description: "Run an MCP server in Python on Cloudflare Workers with create_mcp_handler and the official mcp SDK: read env in tools, add auth, and set CORS and host checks."
 ---
 

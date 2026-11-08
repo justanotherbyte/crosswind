@@ -1,5 +1,5 @@
 ---
-title: "Migrate to the typed Cloudflare Workers Python SDK"
+title: "Migrate a Python Worker from workers-runtime-sdk to crosswind-workers"
 description: "Migrate a Cloudflare Python Worker from workers-runtime-sdk to crosswind-workers, add types one class at a time and check where the two SDKs behave differently."
 ---
 

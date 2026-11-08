@@ -1,5 +1,5 @@
 ---
-title: "Cloudflare Workers Python SDK API reference"
+title: "crosswind-workers API reference"
 description: "Find crosswind-workers Python APIs for Cloudflare Workers: entrypoints, requests, responses, bindings, RPC, Durable Objects, Workflows, ASGI and WSGI adapters."
 ---
 

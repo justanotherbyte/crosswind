@@ -1,5 +1,5 @@
 ---
-title: "Crosswind Containers: Python SDK for Cloudflare Containers"
+title: "Cloudflare Containers SDK for Python Workers"
 description: "containers-py is a Python SDK for Cloudflare Containers: start and stop containers and route requests to them from a Python Worker through a Durable Object."
 ---
 

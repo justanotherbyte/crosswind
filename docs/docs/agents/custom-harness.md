@@ -1,5 +1,5 @@
 ---
-title: "Write your own agent harness in Python"
+title: "Write your own harness"
 description: "Subclass Harness to run your own agent loop or another Python AI framework on a Cloudflare Durable Object with checkpoints, tools, approvals and crash recovery."
 ---
 

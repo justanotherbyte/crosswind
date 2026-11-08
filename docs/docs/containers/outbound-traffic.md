@@ -1,5 +1,5 @@
 ---
-title: "Control Cloudflare Container outbound traffic from Python"
+title: "Block, allow and intercept container outbound traffic"
 description: "Block internet access for a Cloudflare Container, allow or deny hosts, and route its outbound HTTP and HTTPS requests through Python handlers in your Worker."
 ---
 
