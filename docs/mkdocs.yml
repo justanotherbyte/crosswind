@@ -94,8 +94,11 @@ nav:
       - Manage the lifecycle: containers/lifecycle.md
       - Route requests: containers/routing.md
       - Control outbound traffic: containers/outbound-traffic.md
+      - Build on the Container class: containers/extend-container.md
       - Common patterns: containers/examples.md
       - Migrate from TypeScript: containers/coming-from-typescript.md
+    - Concepts:
+      - How a container is managed: containers/architecture.md
     - Reference:
       - Container class: containers/container-class.md
       - Generated API: containers/generated-api.md

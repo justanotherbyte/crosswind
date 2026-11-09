@@ -51,7 +51,9 @@ return await container.fetch(request)
 ```
 
 Unlike `get_container`, `get_random` is a coroutine. It picks an instance at
-random and doesn't check health or latency. Keep `instances` at or below
+random and doesn't check health or latency. The instances are named
+`instance-0` to `instance-<n-1>`, so `get_container(binding, "instance-0")`
+reaches one of them. Keep `instances` at or below
 `max_instances` in your Wrangler config. See
 [Stateless instances](https://developers.cloudflare.com/containers/examples/stateless/)
 for the platform side of this pattern.
@@ -111,14 +113,13 @@ response = await container.container_fetch(
 
 Passing request options together with a `Request` raises `TypeError`.
 
-> **Warning**
->
-> Called from your Worker, `container_fetch` is an
-> [RPC](https://developers.cloudflare.com/workers/runtime-apis/rpc/) call, and
-> WebSocket upgrades can't cross RPC yet. See
-> [workerd#2319](https://github.com/cloudflare/workerd/issues/2319). For
-> WebSockets, use `stub.fetch(...)`, combined with `switch_port` when you need
-> another port.
+!!! warning
+    Called from your Worker, `container_fetch` is an
+    [RPC](https://developers.cloudflare.com/workers/runtime-apis/rpc/) call, and
+    WebSocket upgrades can't cross RPC yet. See
+    [workerd#2319](https://github.com/cloudflare/workerd/issues/2319). For
+    WebSockets, use `stub.fetch(...)`, combined with `switch_port` when you need
+    another port.
 
 ## Calling container methods from a Worker
 
