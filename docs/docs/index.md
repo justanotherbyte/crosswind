@@ -202,6 +202,8 @@ makes the JavaScript calls.
 | [Wynd](wynd/overview.md)              | `wynd`              | Replaces pywrangler. It drops vendored files your Worker never imports before each upload.   | [Switch from pywrangler](wynd/getting-started.md) | ![wynd on PyPI](https://img.shields.io/pypi/v/wynd?style=flat-square&label=&color=282b2e)                   |
 
 For a new Python Worker, use `crosswind-workers` and deploy it with Wynd.
+Agents, Containers and Sandboxes don't require either one. See
+[how the packages fit together](introduction.md#how-the-packages-fit-together).
 
 </section>
 
