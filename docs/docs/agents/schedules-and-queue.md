@@ -62,6 +62,9 @@ five years, raises `InvalidCronExpressionError`.
 await self.schedule_every(timedelta(hours=1), self.sync_feeds)
 ```
 
+The first run happens one `interval` after you call `schedule_every`, not
+immediately.
+
 If a run is still in progress when the next one is due, the SDK skips the next
 one. A run counts as hung after `options.hung_schedule_timeout`, 30 seconds by
 default, and then the schedule runs again.
