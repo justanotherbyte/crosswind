@@ -114,6 +114,50 @@ with your own client. There's no `onFinish` callback, so use
 `on_chat_response`. Cancellation replaces the `abortSignal`, so a stopped
 turn gets `asyncio.CancelledError`. See [Build a chat agent](chat.md).
 
+## Chat with tools
+
+`streamText({ model, tools })` maps to `PydanticAIHarness`. Pydantic AI runs
+the tool loop, and `@tool` methods are the tools.
+
+**Python**
+
+```python
+import pydantic_ai
+
+from agents import Agent, tool
+from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel
+
+
+class Notes(Agent):
+    def __init__(self, ctx, env):
+        super().__init__(ctx, env)
+        model = WorkersAIModel("@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI)
+        agent = pydantic_ai.Agent(model, instructions="You keep the user's notes.")
+        self.harness = self.use(PydanticAIHarness("notes", agent, target=self))
+
+    @tool
+    async def add_note(self, text: str) -> str:
+        """Save a note."""
+        return "Saved"
+```
+
+**TypeScript**
+
+```typescript
+async onChatMessage() {
+  return streamText({
+    model: workersai("@cf/qwen/qwen3-30b-a3b-fp8"),
+    messages: convertToModelMessages(this.messages),
+    tools: { addNote },
+  }).toUIMessageStreamResponse();
+}
+```
+
+The harness stores the conversation itself, so it runs on `Agent`, not
+`AIChatAgent`. Call `self.harness.prompt(text)` for the reply, or
+`session.stream(text)` to stream it. See
+[Run a Pydantic AI agent in a Durable Object](pydantic-ai.md).
+
 ## Errors
 
 The SDK's own exceptions subclass `AgentsException`, so
@@ -126,7 +170,7 @@ type, raises `TypeError`, `ValueError` or `RuntimeError` instead.
 | --------------------------------------------------- | -------------------------------------------- |
 | `McpAgent` and MCP's RPC transport                  | Not ported. Use [`create_mcp_handler`](mcp-server.md). |
 | MCP's legacy SSE transport                          | Not ported. [`add_mcp_server`](mcp-client.md) speaks Streamable HTTP. |
-| Chat client tools and approvals                     | Not ported.                                  |
+| Chat client tools and approvals                     | Not ported. Server-side tools and approvals run in the [Pydantic AI harness](pydantic-ai.md#approve-tool-calls). |
 | Recovery of interrupted chat turns                  | Not ported.                                  |
 | `props` in `routeAgentRequest` and `getAgentByName` | Not ported.                                  |
 | Think, voice, email, channels, workflows, browser   | Not ported.                                  |
