@@ -27,13 +27,13 @@ Each Crosswind SDK speaks the same wire protocols as it's official counter-part.
 
 ## Picking a Runtime SDK and a Build Tool
 
-Cloudflare ships [`pywrangler`]() and [`workers-runtime-sdk`](). They're both great!
+Cloudflare ships [`pywrangler`](https://github.com/cloudflare/workers-py) and [`workers-runtime-sdk`](https://pypi.org/project/workers-runtime-sdk/). They're both great!
 
-Crosswind provides it's own opinionated build tool [`wynd`](), and it's own runtime SDK, [`crosswind-workers`](). They are not required, but they were built to make working with Python Workers that bit nicer:
+Crosswind provides its own opinionated build tool [`wynd`](wynd/overview.md), and its own runtime SDK, [`crosswind-workers`](workers/overview.md). They are not required, but they were built to make working with Python Workers that bit nicer:
 
 - [x] Auto-magically generate typed `Env` stub. Workers using `crosswind-workers` can accept this as a generic!
 - [x] Keep Node.js build artifacts out of your Python codebase.
-- [x] Write your worker configurations with a typed [`cloudflare.config.py`]() instead of using JSONC or TOML.
+- [x] Write your worker configurations with a typed [`cloudflare.config.py`](wynd/python-config.md) instead of using JSONC or TOML.
 
 This is just a few things Crosswind gives you. You can choose to either `wynd` or `crosswind-workers`, both, or neither! All of Crosswind is still compatible with the official tools.
 
