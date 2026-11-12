@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from genai_prices import data_snapshot
 from pydantic_ai import (
     BinaryContent,
     CachePoint,
@@ -59,6 +60,8 @@ __all__ = ("WorkersAIModel",)
 
 _PROVIDER = "cloudflare"
 
+_NO_PRICES = data_snapshot.DataSnapshot(providers=[], from_auto_update=False)
+
 _OPTIONS = (
     "max_tokens",
     "temperature",
@@ -80,6 +83,11 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
     files as a note naming them. Streamed requests stream text, reasoning
     and tool calls token by token, and skip whitespace-only text ahead of
     the answer.
+
+    Building one turns off Pydantic AI's price lookup for the isolate, so
+    ``usage.cost`` stays ``None``: the price table doesn't fit in a Durable
+    Object's memory. Call ``genai_prices.data_snapshot.set_custom_snapshot``
+    first to keep your own prices.
 
     Parameters
     ----------
@@ -119,6 +127,10 @@ class WorkersAIModel(workers_ai.WorkersAIModel, Model):
         profile: ModelProfileSpec | None = None,
         clean_text: Callable[[str], str] | None = None,
     ) -> None:
+        # Pydantic AI loads genai-prices' bundled price table in Model.__init__
+        # and on every answer. It takes ~70 MB of a Durable Object's 128 MB.
+        if data_snapshot._custom_snapshot is None:
+            data_snapshot.set_custom_snapshot(_NO_PRICES)
         super().__init__(
             name,
             binding=binding,
