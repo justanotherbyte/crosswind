@@ -28,6 +28,7 @@ CLASSES = {
     "analytics_engine_datasets": "AnalyticsEngineDataset",
     "images": "ImagesBinding",
     "ratelimits": "RateLimit",
+    "ai": "AI",
 }
 
 DEV_VARS_KEY = re.compile(r"^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=", re.MULTILINE)

@@ -152,8 +152,9 @@ runtime.
 | `analytics_engine_datasets`                                   | `AnalyticsEngineDataset`                |
 | `images`                                                      | `ImagesBinding`                         |
 | `ratelimits`                                                  | `RateLimit`                             |
+| `ai`                                                          | `AI`                                    |
 | `version_metadata`                                            | `JsDict`                                |
-| Any other binding, such as `ai` or `browser`                  | `Binding`                               |
+| Any other binding, such as `browser`                          | `Binding`                               |
 | A text var, and each name in `.dev.vars`                      | `str`                                   |
 | A JSON var                                                    | The type of its value, such as `int`, `list[str]` or `dict[str, int]` |
 
