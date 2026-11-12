@@ -43,8 +43,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from workers.bindings import (
+    AI,
     AnalyticsEngineDataset,
-    Binding,
     D1Database,
     DurableObjectNamespace,
     Fetcher,
@@ -72,7 +72,7 @@ class Env(Protocol):
     AUTH: Fetcher
     ASSETS: Fetcher
     FLOW: Workflow
-    AI: Binding
+    AI: AI
     LIMITER: RateLimit
     INDEX: Vectorize
     EVENTS: AnalyticsEngineDataset

@@ -90,9 +90,9 @@ runtime:
 | `durable_objects.bindings`   | [`DurableObjectNamespace`](api.md#durableobjectnamespace) |
 | `services`, `assets`         | [`Fetcher`](api.md#fetcher)                               |
 | `workflows`                  | [`Workflow`](api.md#workflow)                             |
-| `vectorize`, `analytics_engine_datasets`, `images`, `ratelimits` | `Vectorize`, `AnalyticsEngineDataset`, `ImagesBinding`, `RateLimit`. See [Other binding classes](api.md#other-binding-classes). |
+| `ai`, `vectorize`, `analytics_engine_datasets`, `images`, `ratelimits` | `AI`, `Vectorize`, `AnalyticsEngineDataset`, `ImagesBinding`, `RateLimit`. See [Other binding classes](api.md#other-binding-classes). |
 | `vars` and secrets           | `str`, or a Python value for a JSON var                  |
-| Anything else, such as `ai`  | [`Binding`](api.md#binding)                               |
+| Anything else, such as `browser` | [`Binding`](api.md#binding)                               |
 
 Run `uvx wynd types` after you change the config, so `Env` in `src/env.py`
 lists the new bindings. `wynd dev` and `wynd deploy` also regenerate it.
@@ -257,6 +257,27 @@ class Default(WorkerEntrypoint[Env]):
 `self.ctx`. A `queue(self, batch)` fails on every batch with
 `TypeError: Default.queue() takes 2 positional arguments but 4 were given`
 in the `wynd dev` log, and the runtime delivers the batch again.
+
+## Workers AI
+
+Add `"ai": { "binding": "AI" }` to the config. `AI.run` takes the model name
+and a `dict` of inputs, and returns the model's output as a `dict`:
+
+```python
+out = await self.env.AI.run(
+    "@cf/meta/llama-4-scout-17b-16e-instruct",
+    {"messages": [{"role": "user", "content": "Hello"}]},
+)
+out["response"]
+```
+
+With `"stream": True` in the inputs, `run` returns a `js.ReadableStream` of
+server-sent events. Return it in a `Response` to stream it to the client:
+
+```python
+stream = await self.env.AI.run(model, {"messages": messages, "stream": True})
+return Response(stream, headers={"content-type": "text/event-stream"})
+```
 
 ## Service bindings
 

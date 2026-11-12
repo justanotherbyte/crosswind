@@ -7,6 +7,7 @@ options object unchanged, so stock calls like `kv.put(k, v, expirationTtl=60)`
 keep working.
 """
 
+from .ai import AI
 from .analytics import AnalyticsEngineDataset
 from .base import Binding
 from .base import _convert as _convert
@@ -24,6 +25,7 @@ from .vectorize import Vectorize
 from .workflow import Workflow, WorkflowInstance
 
 __all__ = (
+    "AI",
     "AnalyticsEngineDataset",
     "Binding",
     "D1Database",

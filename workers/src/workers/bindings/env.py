@@ -5,6 +5,7 @@ from typing import Any
 
 from .._js import js_name
 from ..rpc import python_from_rpc
+from .ai import AI
 from .analytics import AnalyticsEngineDataset
 from .base import Binding
 from .d1 import D1Database
@@ -33,6 +34,7 @@ _CLASS_FOR_JS: dict[str, Callable[[Any], Any]] = {
     "LocalAnalyticsEngineDataset": AnalyticsEngineDataset,
     "ImagesBindingImpl": ImagesBinding,
     "Ratelimit": RateLimit,
+    "Ai": AI,
 }
 
 

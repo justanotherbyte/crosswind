@@ -5,6 +5,7 @@ from fake_js import JsBinding, JsValue, js_response, jsnull, run
 
 from workers import DurableObject, Response, WorkerEntrypoint, python_to_rpc
 from workers.bindings import (
+    AI,
     AnalyticsEngineDataset,
     Binding,
     D1Database,
@@ -59,7 +60,7 @@ def test_env_wraps_each_binding_by_its_js_class() -> None:
     assert isinstance(env.LOCAL_EVENTS, AnalyticsEngineDataset)
     assert isinstance(env.IMAGES, ImagesBinding)
     assert isinstance(env.LIMITER, RateLimit)
-    assert type(env.AI) is Binding
+    assert isinstance(env.AI, AI)
     assert type(env.HYPERDRIVE) is Binding
     assert env.TEXT == "hello"
     assert env.FLAGS == {"beta": True}
@@ -173,6 +174,33 @@ def test_vectorize_sends_camel_case_query_options_and_lists() -> None:
         ("query", ([0.5, 1.0], {"topK": 3, "returnMetadata": "all"})),
         ("upsert", ([{"id": "a", "values": [0.5]}],)),
         ("deleteByIds", (["doc-1"],)),
+    ]
+
+
+def test_ai_run_converts_inputs_and_sends_camel_case_options() -> None:
+    js_ai = JsBinding("Ai", returns=JsValue("Object", {"response": "hi"}))
+    ai = AI(js_ai)
+    messages = [{"role": "user", "content": "hello"}]
+
+    result = run(
+        ai.run(
+            "@cf/model",
+            {"messages": messages},
+            gateway={"id": "g"},
+            return_raw_response=False,
+        )
+    )
+
+    assert result == {"response": "hi"}
+    assert js_ai.calls == [
+        (
+            "run",
+            (
+                "@cf/model",
+                {"messages": messages},
+                {"gateway": {"id": "g"}, "returnRawResponse": False},
+            ),
+        )
     ]
 
 
