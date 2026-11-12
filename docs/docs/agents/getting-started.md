@@ -44,7 +44,7 @@ class Counter(Agent):
     async def on_request(self, request: Request) -> Response:
         if request.method == "POST":
             await self.increment()
-        return Response.from_json(self.state)
+        return Response.json(self.state)
 
 
 class Default(WorkerEntrypoint):

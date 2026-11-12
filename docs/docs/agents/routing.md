@@ -185,7 +185,7 @@ class Default(WorkerEntrypoint):
     async def fetch(self, request: Request) -> Response:
         counter = await get_agent_by_name(self.env.Counter, "from-worker")
         count = await counter.increment(5)
-        return Response.from_json({"count": count})
+        return Response.json({"count": count})
 ```
 
 ```json
