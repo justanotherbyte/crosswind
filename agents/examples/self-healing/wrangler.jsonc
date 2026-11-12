@@ -1,0 +1,12 @@
+{
+  "name": "self-healing",
+  "main": "src/entry.py",
+  "assets": { "directory": "./dist", "run_worker_first": ["/agents/*"] },
+  "compatibility_date": "2026-07-20",
+  "compatibility_flags": ["python_workers", "python_workers_314"],
+  "ai": { "binding": "AI", "remote": true },
+  "durable_objects": {
+    "bindings": [{ "class_name": "SelfHealing", "name": "SelfHealing" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SelfHealing"] }]
+}

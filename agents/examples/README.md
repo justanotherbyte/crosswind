@@ -7,6 +7,7 @@ Use these examples to see a Python agent connected to a React client. Each examp
 | [counter](./counter) | Shared state and a `@callable` method. Every open tab sees the same count. |
 | [chat](./chat) | An `AIChatAgent` that streams replies from Workers AI to `useAgentChat`. |
 | [reminders](./reminders) | `schedule()` runs a method 5 seconds later, and the agent updates its state. |
+| [self-healing](./self-healing) | A Pydantic AI agent crashes mid-tool-call and resumes from its checkpoint. |
 
 ## Run one
 
