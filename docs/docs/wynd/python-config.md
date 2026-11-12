@@ -174,10 +174,34 @@ class Default(WorkerEntrypoint[Env]):
 leaves the binding out, so `"DEBUG": staging and bindings.Text("1")` exists
 only in staging.
 
-`bindings.DurableObject("Counter")` names a class in `exports`, and
-`exports.DurableObject()` declares that class with SQLite storage. Wynd
-compiles both into the Wrangler config, so the Worker needs no
-`migrations`.
+A Durable Object, an agent included, needs two entries:
+
+```python
+env={"COUNTER": bindings.DurableObject("Counter")},  # self.env.COUNTER in your code
+exports={"Counter": exports.DurableObject()},       # the Counter class in src/main.py
+```
+
+- The `exports` key is the class name in your entry module.
+  `exports.DurableObject()` tells Cloudflare the class exists and gives it
+  SQLite storage.
+- The `env` key is the binding name your code reads, as `self.env.COUNTER`.
+  `bindings.DurableObject("Counter")` points that name at the export.
+
+Wynd compiles these into Wrangler's `exports` and `durable_objects.bindings`.
+A Wrangler file declares the class with a `migrations` entry instead, and you
+add a new `tag` for each change. With Wynd you write no `migrations` and no
+`tag`:
+
+- To add a class, add it to `exports` and give it a binding in `env`.
+- To rename or remove a class, change its export to
+  `exports.RenamedDurableObject(...)` or `exports.DeletedDurableObject()`.
+  Don't delete the line, because the deployed class still holds data. See
+  [Exports](#exports).
+
+Cloudflare explains bindings in
+[Bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/)
+and Durable Objects in
+[What are Durable Objects?](https://developers.cloudflare.com/durable-objects/concepts/what-are-durable-objects/).
 
 Set the secret's local value in `.dev.vars`, beside `cloudflare.config.py`:
 

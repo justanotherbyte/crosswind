@@ -87,6 +87,10 @@ Add the Workers AI binding to your Wrangler config:
 }
 ```
 
+`"remote": true` makes `dev` call the real Workers AI service, which has no
+local version. See
+[Remote bindings](https://developers.cloudflare.com/workers/development-testing/#remote-bindings).
+
 !!! tip
     Pydantic AI prints a startup banner that Wrangler logs as `[ERROR]`.
     Set `pydantic_ai.BANNER_ENABLED = False` at the top of `src/entry.py` to hide it.

@@ -182,7 +182,7 @@ class Default(WorkerEntrypoint):
         result: TranscodeResult = await container.transcode(
             "https://example.com/in.mp4", "720p"
         )
-        return Response.from_json(result)
+        return Response.json(result)
 ```
 
 ## Check requests before they reach the container

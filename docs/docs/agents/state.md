@@ -103,7 +103,13 @@ exception doesn't undo the change.
 ## Store rows with SQL
 
 `self.sql(query, *params)` runs one statement against the agent's SQLite
-database and returns a list of dicts. Use `?` placeholders for values:
+database and returns a list of dicts. Each agent instance has its own
+database and handles one request at a time, so data every request reads, kept
+in one instance such as `"main"`, puts all your traffic through that one
+instance. Cloudflare compares D1, KV and the other options in
+[Choosing a data or storage product](https://developers.cloudflare.com/workers/platform/storage-options/).
+
+Use `?` placeholders for values:
 
 ```python
 from workers import Request, Response
@@ -121,7 +127,7 @@ class Notes(Agent):
         if request.method == "POST":
             self.sql("INSERT INTO notes (text) VALUES (?)", await request.text())
         rows = self.sql("SELECT id, text FROM notes ORDER BY id")
-        return Response.from_json(list(rows))
+        return Response.json(list(rows))
 ```
 
 ```sh

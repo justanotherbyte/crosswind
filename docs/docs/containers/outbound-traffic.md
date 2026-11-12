@@ -107,7 +107,7 @@ hostname match takes precedence over a glob:
 async def mock_payments(
     request: Request, env: Any, ctx: OutboundHandlerContext
 ) -> Response:
-    return Response.from_json({"status": "succeeded"})
+    return Response.json({"status": "succeeded"})
 
 
 async def block(request: Request, env: Any, ctx: OutboundHandlerContext) -> Response:

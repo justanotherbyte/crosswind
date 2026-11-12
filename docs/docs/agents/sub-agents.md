@@ -37,7 +37,7 @@ class Inbox(Agent):
         thread = await self.dynamic_agents.get(Thread, "t1")
         count = await thread.add("hi")
         names = [child.name for child in self.dynamic_agents.list()]
-        return Response.from_json({"count": count, "threads": names})
+        return Response.json({"count": count, "threads": names})
 ```
 
 ```json

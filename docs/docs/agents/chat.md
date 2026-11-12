@@ -148,6 +148,11 @@ or the turn fails with `TypeError`.
 
 ## Call a model
 
+!!! tip "Calling a model with tools"
+    To have a model call your Python methods, use the
+    [Pydantic AI harness](pydantic-ai.md): `WorkersAIModel` plus `@tool` methods.
+    The harness runs on `Agent`, not `AIChatAgent`, and streams with `session.stream()`.
+
 The SDK doesn't call a model or ship provider adapters. Inside
 `on_chat_message`, convert `self.messages` to your provider's format, call it
 with your own client, and yield its text as it streams. A converter for
