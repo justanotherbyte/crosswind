@@ -15,15 +15,18 @@ Run the following in your terminal:
 uv add "cf-agents[pydantic-ai]"
 ```
 
-For Python 3.14 Workers, use uv 0.13.4 or later and add the `python_workers_314` compatibility flag.
+For Python 3.14 Workers, use uv 0.13.4 or later and a `compatibility_date` of 2026-09-08 or later. You only need the `python_workers_314` compatibility flag if you keep an older date.
 
 For Python 3.13 Workers with pywrangler, add this to your `pyproject.toml`. pywrangler's default index stops at pydantic 2.10, which is too old for Pydantic AI 2.64.
 ```toml
 [tool.uv.pip]
 extra-index-url = ["https://index.pyodide.org/0.29.3"]
+index-strategy = "unsafe-best-match"
 ```
 
-It must go under `[tool.uv.pip]`. Under `[tool.uv]`, it breaks `uv sync`.
+It must go under `[tool.uv.pip]`. Under `[tool.uv]`, it breaks `uv sync`. pywrangler picks versions from both indexes but installs each package from the first index that has it. Without `index-strategy`, `pywrangler sync` fails with `there is no version of typing-extensions==4.16.0`.
+
+The examples use the [crosswind-workers](../workers/overview.md) types: `DurableObjectContext` for `ctx`, and the `Env` class that [`wynd types`](../wynd/types.md) writes for `env`.
 
 ## Quickstart
 
@@ -31,7 +34,9 @@ This agent saves notes when the model asks it to:
 
 ```python
 import pydantic_ai
+from env import Env
 from workers import Request, Response, WorkerEntrypoint
+from workers.context import DurableObjectContext
 
 from agents import Agent, route_agent_request, tool
 from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel
@@ -40,7 +45,7 @@ from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel
 class Notes(Agent):
     initial_state = {"notes": []}
 
-    def __init__(self, ctx, env):
+    def __init__(self, ctx: DurableObjectContext, env: Env) -> None:
         super().__init__(ctx, env)
         model = WorkersAIModel("@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI)
         agent = pydantic_ai.Agent(model, instructions="You keep the user's notes.")
@@ -54,6 +59,8 @@ class Notes(Agent):
 
     async def on_request(self, request: Request) -> Response:
         result = await self.harness.prompt(await request.text())
+        if result.status != "done":
+            return Response(f"{result.status}: {result.reason}", status=500)
         return Response(result.text or "")
 
 
@@ -70,8 +77,8 @@ Add the Workers AI binding to your Wrangler config:
 ```jsonc
 {
   "main": "src/entry.py",
-  "compatibility_date": "2026-07-20",
-  "compatibility_flags": ["python_workers", "python_workers_314"],
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": ["python_workers"],
   "ai": { "binding": "AI", "remote": true },
   "durable_objects": {
     "bindings": [{ "class_name": "Notes", "name": "Notes" }]
@@ -79,6 +86,11 @@ Add the Workers AI binding to your Wrangler config:
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Notes"] }]
 }
 ```
+
+!!! tip
+    Pydantic AI prints a startup banner that Wrangler logs as `[ERROR]`.
+    Set `pydantic_ai.BANNER_ENABLED = False` at the top of `src/entry.py` to hide it.
+    The `PYDANTIC_AI_NO_BANNER` variable doesn't work here, because Wrangler `vars` don't reach `os.environ`.
 
 Then talk to it:
 
@@ -91,6 +103,7 @@ curl -d "Remember to buy milk" http://localhost:8787/agents/notes/demo
 - `target=self` gives the model every `@tool` method on `Notes`. The method's name, signature and docstring describe the tool. The target is also the run's `deps`.
 - `self.use(...)` installs the harness. Call it in `__init__`, before the agent starts.
 - `prompt()` adds the prompt to the root session and waits for the result. The next prompt continues the same conversation.
+- `prompt()` doesn't raise when a turn fails. The result settles `unanswered`, and `result.reason` holds the error.
 
 ## Where Pydantic AI comes in
 
@@ -143,14 +156,16 @@ The harness doesn't need the `Agent` class. Install it on a `DurableObject` with
 
 ```python
 import pydantic_ai
+from env import Env
 from workers import DurableObject, Request, Response, WorkerEntrypoint
+from workers.context import DurableObjectContext
 
 from agents import Lifecycle, tool
 from agents.harness.pydantic_ai import PydanticAIHarness, WorkersAIModel
 
 
-class Notes(DurableObject):
-    def __init__(self, ctx, env):
+class Notes(DurableObject[Env]):
+    def __init__(self, ctx: DurableObjectContext, env: Env) -> None:
         super().__init__(ctx, env)
         model = WorkersAIModel("@cf/qwen/qwen3-30b-a3b-fp8", binding=env.AI)
         agent = pydantic_ai.Agent(model, instructions="You keep the user's notes.")
@@ -168,6 +183,8 @@ class Notes(DurableObject):
 
     async def ask(self, prompt: str) -> str:
         result = await self.harness.prompt(prompt)
+        if result.status != "done":
+            raise RuntimeError(f"{result.status}: {result.reason}")
         return result.text or ""
 
     async def alarm(self, alarm_info=None) -> None:
@@ -413,6 +430,10 @@ A later operation in the session has run, so the old checkpoint would drop its t
 ### Why does `ImportError: agents.harness.pydantic_ai needs pydantic-ai-slim>=2.64` appear on Python 3.13 Workers?
 
 pywrangler's default index has an older version. Add the `extra-index-url` from [Installation](#installation) and run `pywrangler sync` again.
+
+### Why does `pywrangler sync` say there is no version of `typing-extensions==4.16.0`?
+
+`index-strategy = "unsafe-best-match"` is missing from `[tool.uv.pip]`. Add it next to the `extra-index-url` from [Installation](#installation).
 
 ### Why does a crashed turn only resume on the next prompt?
 
