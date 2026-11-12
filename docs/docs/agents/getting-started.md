@@ -115,10 +115,14 @@ Replace the Wrangler config with one of these:
     )
     ```
 
-Each agent class needs a Durable Object binding and a migration that creates
-it as a SQLite-backed class. `route_agent_request` finds the agent by the
+Each agent class needs a Durable Object
+[binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/)
+and a [migration](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/)
+that creates it as a SQLite-backed class. `route_agent_request` finds the agent by the
 binding's `name`, converted to kebab case, so the binding `Counter` answers at
-`/agents/counter/...`.
+`/agents/counter/...`. In `cloudflare.config.py`, the `env` and `exports`
+entries take the place of both, as
+[Write config in Python](../wynd/python-config.md#add-bindings) explains.
 
 ## 4. Run it locally
 

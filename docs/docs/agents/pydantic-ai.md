@@ -80,6 +80,10 @@ Add the Workers AI binding to your Wrangler config:
 }
 ```
 
+`"remote": true` makes `dev` call the real Workers AI service, which has no
+local version. See
+[Remote bindings](https://developers.cloudflare.com/workers/development-testing/#remote-bindings).
+
 Then talk to it:
 
 ```sh
