@@ -357,3 +357,28 @@ def _text_deltas(events: list[object]) -> list[str]:
         for event in events
         if isinstance(event, ChunkEvent) and isinstance(event.chunk, TextDelta)
     ]
+
+
+def test_building_the_model_skips_the_price_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from genai_prices import data_snapshot
+
+    monkeypatch.setattr(data_snapshot, "_custom_snapshot", None)
+    data_snapshot._bundled_snapshot.cache_clear()
+    WorkersAIModel("@cf/model", binding=FakeAI())
+
+    assert data_snapshot.get_snapshot().providers == []
+    assert data_snapshot._bundled_snapshot.cache_info().currsize == 0
+
+
+def test_building_the_model_keeps_a_custom_price_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from genai_prices import data_snapshot
+
+    mine = data_snapshot.DataSnapshot(providers=[], from_auto_update=True)
+    monkeypatch.setattr(data_snapshot, "_custom_snapshot", mine)
+    WorkersAIModel("@cf/model", binding=FakeAI())
+
+    assert data_snapshot.get_snapshot() is mine
