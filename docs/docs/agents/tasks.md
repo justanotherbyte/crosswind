@@ -47,7 +47,7 @@ from workers import Request, Response
 class Reports(Agent):
     async def on_request(self, request: Request) -> Response:
         receipt = await self.build.run({"rows": 21})
-        return Response.from_json({"run_id": receipt.run_id, "state": receipt.state})
+        return Response.json({"run_id": receipt.run_id, "state": receipt.state})
 ```
 
 ```json

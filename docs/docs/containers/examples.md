@@ -291,7 +291,7 @@ from workers import Request, Response
 async def fake_weather(
     request: Request, env: Any, ctx: OutboundHandlerContext
 ) -> Response:
-    return Response.from_json({"city": "Lisbon", "temp_c": 21})
+    return Response.json({"city": "Lisbon", "temp_c": 21})
 
 
 class Sandbox(Container):

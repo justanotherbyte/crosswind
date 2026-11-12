@@ -121,7 +121,7 @@ class Notes(Agent):
         if request.method == "POST":
             self.sql("INSERT INTO notes (text) VALUES (?)", await request.text())
         rows = self.sql("SELECT id, text FROM notes ORDER BY id")
-        return Response.from_json(list(rows))
+        return Response.json(list(rows))
 ```
 
 ```sh
