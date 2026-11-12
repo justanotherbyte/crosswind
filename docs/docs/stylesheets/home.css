@@ -1068,3 +1068,102 @@
     display: none;
   }
 }
+
+/* Wynd pane: real terminal output, coloured as Rich and Wrangler print it */
+.cw-term__prompt,
+.cw-term__dim {
+  color: var(--cw-muted);
+}
+
+.cw-term__wynd {
+  color: var(--cw-accent);
+  font-weight: 700;
+}
+
+.cw-term__faint {
+  color: var(--cw-label);
+}
+
+.cw-term__bold {
+  font-weight: 700;
+}
+
+.cw-term__head {
+  color: var(--cw-purple);
+}
+
+.cw-term__ok {
+  color: var(--cw-accent);
+}
+
+/* Wynd pane terminal playback (home.js). The static transcript stays for screen readers. */
+.cw-pane:has(.cw-term) {
+  position: relative;
+}
+
+/* Terminal line height, so box-drawing borders join up; room below for the control */
+.md-typeset .cw-term pre > code {
+  padding-bottom: 2.2rem;
+  line-height: 1.3;
+}
+
+.cw-term__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: pre;
+}
+
+.cw-term__line {
+  animation: cw-term-line 120ms var(--cw-ease-out);
+}
+
+@keyframes cw-term-line {
+  from {
+    opacity: 0.35;
+  }
+}
+
+.cw-term__caret {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.2em;
+  margin-bottom: -0.25em;
+  background-color: var(--cw-accent);
+}
+
+.cw-term__caret.is-idle {
+  animation: cw-term-blink 1.06s steps(1) infinite;
+}
+
+@keyframes cw-term-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.cw-term__control {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.6rem;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-m);
+  background-color: var(--cw-elevated);
+  color: var(--cw-text-2);
+  font: 400 0.55rem/1.5 var(--md-code-font-family);
+  cursor: pointer;
+  transition: border-color var(--cw-fast), color var(--cw-fast);
+}
+
+.cw-term__control:is(:hover, :focus-visible) {
+  border-color: var(--cw-border-strong);
+  color: var(--cw-text);
+}
+
+.cw-term__control:focus-visible {
+  outline: 1px solid var(--cw-accent);
+  outline-offset: 2px;
+}

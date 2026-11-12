@@ -130,3 +130,113 @@ document.querySelector(".cw-demo button")?.addEventListener("click", (event) => 
   frame.allow = "fullscreen; autoplay; gamepad";
   event.currentTarget.parentElement.replaceChildren(frame);
 });
+
+// Wynd pane: replays the transcript as a terminal session. The static transcript stays
+// in the page for screen readers and is what shows without JS or with reduced motion.
+(() => {
+  const box = document.querySelector(".cw-term");
+  const code = box?.querySelector("code");
+  if (!code || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const lines = code.innerHTML.split("\n");
+  const live = code.cloneNode(false);
+  live.setAttribute("aria-hidden", "true");
+  code.classList.add("cw-term__sr");
+  code.after(live);
+
+  const pane = box.closest(".cw-pane");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cw-term__control";
+  pane.append(button);
+
+  const caret = document.createElement("span");
+  caret.className = "cw-term__caret";
+  const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  const isBox = (text) => /^[│├┌└╭╰─]/.test(text);
+  let run = 0;
+  let pinned = true; // follow new output until the reader scrolls up
+
+  box.addEventListener("scroll", () => {
+    pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 8;
+  });
+  const follow = () => {
+    if (pinned) box.scrollTop = box.scrollHeight;
+  };
+
+  function addLine(html) {
+    const line = document.createElement("span");
+    line.className = "cw-term__line";
+    line.innerHTML = html;
+    live.append(line, "\n");
+    return line;
+  }
+
+  async function play() {
+    const id = ++run;
+    const alive = () => id === run;
+    live.replaceChildren();
+    pinned = true;
+    box.scrollTop = 0;
+    button.textContent = "Skip";
+
+    for (const html of lines) {
+      const at = html.indexOf('<span class="cw-term__in">');
+      if (at === -1) {
+        const text = html.replace(/<[^>]+>/g, "");
+        const pause = text === "​" ? 1400 : isBox(text) ? 12 : /Ready on|Starting local/.test(text) ? 700 : 70;
+        await sleep(pause);
+        if (!alive()) return;
+        addLine(html);
+        follow();
+        continue;
+      }
+      // A line the user types: show what precedes the input, then type it out
+      const typed = html.slice(at).replace(/<[^>]+>/g, "");
+      const line = addLine(html.slice(0, at));
+      const input = document.createElement("span");
+      line.append(input, caret);
+      follow();
+      caret.classList.add("is-idle");
+      await sleep(typed ? 650 : 900);
+      caret.classList.remove("is-idle");
+      for (const char of typed) {
+        if (!alive()) return;
+        input.textContent += char;
+        await sleep(38 + Math.random() * 60);
+      }
+      await sleep(280);
+      if (!alive()) return;
+      caret.remove();
+      await sleep(typed.startsWith("uvx") ? 500 : 120);
+    }
+    finish(id);
+  }
+
+  function finish(id) {
+    if (id !== run) return;
+    const line = addLine('<span class="cw-term__dim">$</span> ');
+    caret.classList.add("is-idle");
+    line.append(caret);
+    follow();
+    button.textContent = "Replay";
+  }
+
+  function skip() {
+    const id = ++run;
+    live.replaceChildren();
+    for (const html of lines) addLine(html);
+    pinned = true;
+    finish(id);
+  }
+
+  button.addEventListener("click", () => (button.textContent === "Skip" ? skip() : play()));
+
+  // Start the first time the pane is on screen; a hidden pane never intersects
+  const seen = new IntersectionObserver(([entry]) => {
+    if (!entry.isIntersecting) return;
+    seen.disconnect();
+    play();
+  }, { threshold: 0.35 });
+  seen.observe(box);
+})();

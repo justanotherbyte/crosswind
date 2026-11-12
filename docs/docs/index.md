@@ -160,12 +160,58 @@ Replaces pywrangler. It drops vendored files your Worker never imports before ea
 </div>
 </div>
 
-```sh
-uvx wynd init     # write a new crosswind-workers project
-uvx wynd dev      # install packages for the Worker's Python, then wrangler dev
-uvx wynd deploy   # prune unused packages, then wrangler deploy
-uvx wynd tail     # anything else goes to Wrangler unchanged
-```
+<div class="highlight cw-term"><pre><code><span class="cw-term__dim">$</span> <span class="cw-term__in">uvx wynd init my-worker</span>
+<span class="cw-term__bold">  1)</span> crosswind-workers
+<span class="cw-term__bold">  2)</span> workers-runtime-sdk
+Workers SDK [1]: <span class="cw-term__in">1</span>
+<span class="cw-term__bold">  1)</span> containers-py
+<span class="cw-term__bold">  2)</span> cf-agents
+Add SDKs, comma-separated: <span class="cw-term__in"></span>
+<span class="cw-term__wynd">wynd:</span> wrote src/env.py
+<span class="cw-term__wynd">wynd:</span> created my-worker. Run `wynd dev` in ~/my-worker to serve it.
+&#8203;
+<span class="cw-term__dim">$</span> <span class="cw-term__in">cd my-worker</span>
+<span class="cw-term__dim">$</span> <span class="cw-term__in">uvx wynd dev</span>
+ ⛅️ wrangler 4.129.0
+<span class="cw-term__dim">───────────────────────────────────────────────────</span>
+╭──────────────────────────╮
+│  [b] <span class="cw-term__faint">open a browser      </span>│
+│  [d] <span class="cw-term__faint">open devtools       </span>│
+│  [e] <span class="cw-term__faint">open local explorer </span>│
+│  [t] <span class="cw-term__faint">start tunnel        </span>│
+│  [c] <span class="cw-term__faint">clear console       </span>│
+│  [x] <span class="cw-term__faint">to exit             </span>│
+╰──────────────────────────╯
+Attaching additional modules:
+<span class="cw-term__dim">┌────────────────────┬────────┬────────────┐</span>
+<span class="cw-term__dim">│</span><span class="cw-term__head"> Name               </span><span class="cw-term__dim">│</span><span class="cw-term__head"> Type   </span><span class="cw-term__dim">│</span><span class="cw-term__head"> Size       </span><span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼────────────┤</span>
+<span class="cw-term__dim">│</span> env.py             <span class="cw-term__dim">│</span> python <span class="cw-term__dim">│</span> 0.13 KiB   <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼────────────┤</span>
+<span class="cw-term__dim">│</span> Vendored Modules   <span class="cw-term__dim">│</span>        <span class="cw-term__dim">│</span> 131.24 KiB <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼────────────┤</span>
+<span class="cw-term__dim">│</span> Total (43 modules) <span class="cw-term__dim">│</span>        <span class="cw-term__dim">│</span> 131.37 KiB <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">└────────────────────┴────────┴────────────┘</span>
+<span class="cw-term__faint">⎔ Starting local server...</span>
+<span class="cw-term__ok">[wrangler:info]</span> Ready on <span class="cw-term__ok">http://localhost:8787</span>
+&#8203;
+<span class="cw-term__dim">$</span> <span class="cw-term__in">uvx wynd deploy --dry-run</span>
+<span class="cw-term__wynd">wynd:</span> python_modules is 134,389 bytes, 85,098 after pruning (49,291 fewer). Each file's decision is in .wynd/shake.txt.
+ ⛅️ wrangler 4.129.0
+<span class="cw-term__dim">───────────────────────────────────────────────────</span>
+Attaching additional modules:
+<span class="cw-term__dim">┌────────────────────┬────────┬───────────┐</span>
+<span class="cw-term__dim">│</span><span class="cw-term__head"> Name               </span><span class="cw-term__dim">│</span><span class="cw-term__head"> Type   </span><span class="cw-term__dim">│</span><span class="cw-term__head"> Size      </span><span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼───────────┤</span>
+<span class="cw-term__dim">│</span> env.py             <span class="cw-term__dim">│</span> python <span class="cw-term__dim">│</span> 0.13 KiB  <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼───────────┤</span>
+<span class="cw-term__dim">│</span> Vendored Modules   <span class="cw-term__dim">│</span>        <span class="cw-term__dim">│</span> 83.10 KiB <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">├────────────────────┼────────┼───────────┤</span>
+<span class="cw-term__dim">│</span> Total (37 modules) <span class="cw-term__dim">│</span>        <span class="cw-term__dim">│</span> 83.24 KiB <span class="cw-term__dim">│</span>
+<span class="cw-term__dim">└────────────────────┴────────┴───────────┘</span>
+Total Upload: <span class="cw-term__ok">83.42 KiB / gzip: 19.53 KiB</span>
+No bindings found.
+--dry-run: exiting now.</code></pre></div>
 
 </div>
 
